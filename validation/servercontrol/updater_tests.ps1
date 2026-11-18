@@ -12,7 +12,7 @@ foreach ($n in @('Updater-Core.ps1', 'Update-Page.ps1')) {
 . (Join-Path $Dir 'Updater-Core.ps1')
 
 $i = Get-BmInstalledRelease $Dir
-Assert ($i.Release -eq '1.2' -and $i.Version -eq [version]'1.2.0' -and $i.Build -eq 'V35.2 - New Ground' -and $i.Repo -eq 'sumemailadress-eng/Battlefield-3-Bots---AltBotMod') "installed: Release $($i.Release), build $($i.Build)"
+Assert ($i.Release -eq '1.2' -and $i.Version -eq [version]'1.2.0' -and $i.Build -eq 'V35.2 - New Ground' -and $i.Repo -eq 'VolkMicro/Battlefield-3-Bots---AltBotMod') "installed: Release $($i.Release), build $($i.Build) (Hunt fork: updates from the fork)"
 $none = Get-BmInstalledRelease (Join-Path $Dir 'no-such-folder')
 Assert (-not $none.Release -and -not $none.Version -and $none.Repo -eq $script:BmUpdateRepoDefault) 'no release file: unknown release, the default repo'
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ('upd-test-' + [guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Path $tmp | Out-Null

@@ -16,6 +16,26 @@ The installer keeps your settings and adds the new ones (V31: `LockOnSeconds` an
 
 **Going back:** download an earlier release from the GitHub Releases page and install it, or copy its `files\server\BotModCore.dll` over `BotModCore.dll` in the server folder.
 
+## Hunt (on top of Release 1.2, 2026-11-18)
+
+The bots come for the human players and fight like they mean it. Built and checked offline (the release checks, sanitizers, a new `hunt_checks.py`); not yet played in a live round.
+
+**Bots hunt the human players** (`Hunt=1`, new file `hunt_native.inc`).
+- For every human on foot up to `HuntersPerPlayer` (8) bots of the other team go after it: the nearest free ones, one more three times a second, never more than 60% of a team; the rest play the objectives. Not sent: bots in or claimed for a vehicle, under a player's or a recovery order, at an M-COM, recon bots, bots in their first 10 s.
+- One goes straight in, the others round its left, its right and from behind: a point 25-40 m out on a compass bearing fixed when the bot is sent, then in. Run while far, walk the last 30 m. A new route when the player is 8 m from the planned one, at most every 2 s.
+- What they know: what any bot of their team sees, the player's gunfire and a spot (exact), otherwise a rough fix every `HuntIntelSeconds` (6 s), `HuntIntelMeters` (12 m) off; 6 s of nothing in a fresh life. At the fix with nobody there: it looks round.
+- Let go when the player dies (its next life gets the nearest bots then), flies, leaves; when the hunter dies, takes a vehicle, gets an order, finds no route 4 times (30 s off), or more than `HuntersPerPlayer` hunt one player. A bot let go plans its objective route afresh. The objective director leaves hunters alone.
+- A hunter that sees its player prefers it to any other target; one shot at by its player from beyond its fight range goes on instead of hiding.
+- `!hunt` (status), admins `!hunt on` / `off` / `<0-32>`; console `hunt`. Server Control lists the new settings.
+
+**Gunfight level `nightmare`** (Difficulty=nightmare; `enhanced.ini` ships with it, the core default stays elite). Elite's aim and pauses, plus: no cover from an enemy within 40 m (further off: its own limit of 25 health instead of the fixed 40); every fight on the move closes in and chases 20 s, after the target's footsteps once at its last-seen spot, the rifle on it within 25 m; quick irregular side steps within 35 m whatever `SideSteps` says (0 still none); looks round every 0.3 s (was 0.5 s); engages from 380 m, detects 420 m all round; no "long enough" while the target is in sight. Easy to elite are unchanged. RandomDifficulty at elite now mixes veteran, elite and nightmare.
+
+**Hearing** (`HearMeters=120`): gunfire within that distance is heard whichever way a bot faces; it turns on a shooter it can see.
+
+**Fix: recon bots were taken for assault since V28.** `is_recon` read the name a bot plays under; with gamertags (BotNames=1, the default) no name says "Recon", so sniper overwatch, firing spots, recon ranges and beacons were all off and bolt-action rifles ran onto the flags. It reads the roster identity now.
+
+Checks: `hunt_checks.py` (24 groups: levels, settings, who is sent, approach, knowledge, letting go); the fight fixtures know the new hooks; `altbotmod_v9_checks.py` expects six levels.
+
 ## Release 1.2 (internal V35.2)
 
 **Capture the Flag on the objective mesh.** The four End Game maps (Operation Riverside, Nebandan Flats, Kiasar Railroad, Sabalan Pipeline) now have an objective mesh around both flag stands, so raiders and home guards walk the mesh near the stands instead of the grid. The mesh's base zones sit within 2 m of AltBotMod's own flag-stand positions. 115 objective meshes ship in total (5 more).

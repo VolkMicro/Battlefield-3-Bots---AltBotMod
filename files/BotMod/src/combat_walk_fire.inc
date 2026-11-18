@@ -2,7 +2,15 @@
 // rifle faces the enemy. Vaulting, fence cutting and ladder links keep control.
 static void combat_walk_fire(int i)
 {
-    if(!g_combatMove[i].until || bot_brain(i)->task!=TASK_FIGHT || bot_nav(i)->mode!=3 ||
+    // AltBotMod Hunt (nightmare): going after one that ducked out of sight within 25 m (further off it sprints), the rifle
+    // stays on where it is while the legs follow the path - it comes round the corner aiming, not looking at the floor
+    int chaseAim=0;
+    if(!g_combatMove[i].until && g_fightChase[i] && bot_brain(i)->task==TASK_FIGHT){
+        const BMDifficulty *P=bot_profile(i);
+        char *tg=g_fightTarget[i],*ts=tg && player_exists(tg)?*(char **)(tg+OFF_PLAYER_SOLDIER):NULL,*ms=*(char **)(H->bots[i]+OFF_PLAYER_SOLDIER);
+        chaseAim=P && P->push && ts && ms && dist2((float *)(ms+OFF_SOLDIER_POSITION),(float *)(ts+OFF_SOLDIER_SPAWN_POSITION))<25*25;
+    }
+    if((!g_combatMove[i].until && !chaseAim) || bot_brain(i)->task!=TASK_FIGHT || bot_nav(i)->mode!=3 ||
        H->frame<g_fenceUntil[i] || H->frame<g_vaultUntil[i] || g_stairOn[i])return;
     BotPath *path=&g_paths[i];
     if(path->next<0 || path->next>=path->count || path->link[path->next]>=0)return;

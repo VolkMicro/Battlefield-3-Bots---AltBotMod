@@ -29,6 +29,12 @@ static int player_exists(char*p){return p==players[1];}
 static int player_team(char*p){return *(int*)(p+8);}
 static float yaw_towards(float x,float z){return atan2f(x,z);}
 static float wrap_err(float a,float b){return remainderf(a-b,6.2831853f);}
+// AltBotMod Hunt: a nightmare bot chasing one that ducked out of sight keeps its rifle on it within 25 m
+typedef struct {int push;} BMDifficulty;
+static BMDifficulty nightmare={1};static int profileOn;
+static const BMDifficulty *bot_profile(int i){(void)i;return profileOn?&nightmare:NULL;}
+static unsigned char g_fightChase[1];
+static float dist2(const float*a,const float*b){float x=a[0]-b[0],z=a[2]-b[2];return x*x+z*z;}
 '''+(SRC/'combat_walk_fire.inc').read_text()+r'''
 static void ready(void){
  memset(&host,0,sizeof host);memset(g_paths,0,sizeof g_paths);memset(players,0,sizeof players);memset(soldiers,0,sizeof soldiers);
@@ -46,7 +52,16 @@ int main(void){
  ready();g_vaultUntil[0]=101;held();ready();g_fenceUntil[0]=101;held();
  ready();g_stairOn[0]=1;held();ready();g_paths[0].link[0]=0;held();
  ready();*(int*)(players[1]+8)=1;held();ready();g_paths[0].count=0;held();
- puts("PASS: actual flank control follows a checked waypoint while facing the enemy; vaulting, fence cutting, stairs, ladder links and changed target teams retain control");return 0;
+ puts("PASS: actual flank control follows a checked waypoint while facing the enemy; vaulting, fence cutting, stairs, ladder links and changed target teams retain control");
+ // AltBotMod Hunt: the chase - no relocation under way, the target 20 m off: walk the path facing it (nightmare only)
+ ready();g_combatMove[0].until=0;g_fightChase[0]=1;((float*)soldiers[1])[2]=20;held();   /* no profile: as before */
+ profileOn=1;ready();g_combatMove[0].until=0;g_fightChase[0]=1;((float*)soldiers[1])[2]=20;
+ combat_walk_fire(0);assert(fabsf(H->botMove[0][0])<.01f && H->botMove[0][1]<-.74f && navigation.targetYaw==0);
+ ready();g_combatMove[0].until=0;g_fightChase[0]=1;((float*)soldiers[1])[2]=40;held();   /* 40 m off: it runs (no aiming walk) */
+ ready();g_combatMove[0].until=0;g_fightChase[0]=0;((float*)soldiers[1])[2]=20;held();   /* not chasing: nothing */
+ profileOn=0;
+ puts("PASS: a nightmare bot chasing within 25 m walks the path with its rifle on the target; further off, or not chasing, or another level: as before");
+ return 0;
 }
 '''
 def main():

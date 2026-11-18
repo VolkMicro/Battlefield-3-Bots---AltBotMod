@@ -335,9 +335,15 @@ function Set-BmInstanceSetting([string]$serverDir, $instance, [string]$key, [str
 function New-BmSetting($key, $group, $kind, $min, $max, $default, $label, $help) {
     return [pscustomobject]@{ Key = $key; Group = $group; Kind = $kind; Min = $min; Max = $max; Default = [string]$default; Label = $label; Help = $help }
 }
-$script:BmLevels = @('off', 'easy', 'normal', 'hard', 'veteran', 'elite')
+$script:BmLevels = @('off', 'easy', 'normal', 'hard', 'veteran', 'elite', 'nightmare')
 $script:BmSettings = @(
-    (New-BmSetting 'Difficulty' 'Combat' 'level' 0 5 'elite' 'Gunfight level' 'off = V8 combat; easy .. elite (reaction, bursts, ranges, side steps, grenades)'),
+    (New-BmSetting 'Difficulty' 'Combat' 'level' 0 6 'elite' 'Gunfight level' 'off = V8 combat; easy .. elite (reaction, bursts, ranges, side steps, grenades); nightmare = elite that never lets up (no cover close in, chases, quick side steps)'),
+    (New-BmSetting 'Hunt' 'Combat' 'bool' 0 1 1 'Bots hunt players' 'bots of the other team go after each human player on foot: one straight in, the rest round the flanks and from behind'),
+    (New-BmSetting 'HuntersPerPlayer' 'Combat' 'int' 0 32 8 'Hunters per player' 'how many bots go after one human at a time (never more than 60% of a team)'),
+    (New-BmSetting 'HuntIntelSeconds' 'Combat' 'float' 0 60 6 'Hunters'' rough fix (s)' 'how often hunters learn roughly where a player nobody sees is; 0 = only sight, gunfire and spotting'),
+    (New-BmSetting 'HuntIntelMeters' 'Combat' 'float' 0 100 12 'Rough fix error (m)' 'how far off that rough fix is'),
+    (New-BmSetting 'HuntMaxMeters' 'Combat' 'float' 50 3000 700 'Hunt from (m)' 'a bot further than this from the player is not sent after it'),
+    (New-BmSetting 'HearMeters' 'Combat' 'float' 0 400 120 'Hearing (m)' 'gunfire this close is heard whichever way a bot faces: it turns on a shooter it can see; 0 = off'),
     (New-BmSetting 'RandomDifficulty' 'Combat' 'bool' 0 1 0 'Mixed levels' 'each bot plays one level either side of the gunfight level'),
     (New-BmSetting 'Aggression' 'Combat' 'aggr' 0 2 1 'Aggression' '0 calm, 1 aggressive, 2 brutal (longer chases, wider vision, fewer idle guards)'),
     (New-BmSetting 'BotDamage' 'Combat' 'float' 0.25 4 1 'Bot bullet damage x' 'multiplier for damage done by bots'' bullets'),
@@ -458,7 +464,7 @@ function Test-BmSettingValue($setting, [string]$text) {
         'bool' { if ($t -match '^(1|on|yes|true)$') { return '1' }; if ($t -match '^(0|off|no|false)$') { return '0' }; return $null }
         'level' {
             $i = [Array]::IndexOf($script:BmLevels, $t.ToLower()); if ($i -ge 0) { return $script:BmLevels[$i] }
-            if ($t -match '^[0-5]$') { return $script:BmLevels[[int]$t] }; return $null
+            if ($t -match '^[0-6]$') { return $script:BmLevels[[int]$t] }; return $null
         }
         default {
             $v = 0.0

@@ -88,6 +88,11 @@ static int soldier_ammo2(char*s,int slot,int*l,int*p){(void)s;(void)slot;*l=30;*
 static int go_to_cover(int i,char*s,char*t,const float*p){(void)i;(void)s;(void)t;(void)p;return 0;}
 static void bot_log(const char*f,...){(void)f;}static const char*kTaskNames[]={"none","fight","defend","follow"};
 static void end_task(int i,BotBrain*b,const char*w){(void)i;(void)w;b->task=0;ends++;}
+// AltBotMod Hunt hooks: no hunting and no nightmare level in this fixture (hunt_checks.py covers them)
+static unsigned g_chaseFollowAt[2];
+static void hunt_saw(char*p,const float*x){(void)p;(void)x;}
+static unsigned fight_chase_frames(int i){(void)i;return FIGHT_CHASE_FRAMES;}
+static int fight_stands_ground(int i,float d){(void)i;(void)d;return 0;}
 // This fixture isolates weapon timing; complete relocation sequences are in
 // combat_flow_checks.py (the actual native movement code).
 static struct{unsigned until;}g_combatMove[2];
@@ -231,7 +236,10 @@ static struct{int enabled;}brain={1};static unsigned g_rayFlags,g_spottedAt[64];
 static float selectedDistance;static int rays,blockedBelow;
 static char*player_manager(void){return managerBytes+4;}static int player_team(char*p){return *(int*)(p+8);}
 static char*player_vehicle(char*p){(void)p;return NULL;}static __typeof__(brain)*bot_brain(int i){(void)i;return &brain;}
-static int is_recon(int i){(void)i;return 0;}static int spotted_cached(char*p){(void)p;return 1;}
+static char*notSpotted,*heard,*quarry;   /* AltBotMod Hunt: a player nobody spotted, one that just fired, the one this bot hunts */
+static int is_recon(int i){(void)i;return 0;}static int spotted_cached(char*p){return p!=notSpotted;}
+static char*hunt_quarry(int i){(void)i;return quarry;}static int fired_within(char*p,unsigned f){(void)f;return p==heard;}
+static void hunt_saw(char*p,const float*x){(void)p;(void)x;}
 static int sniper_rifle(int i){(void)i;return 0;}static float sniper_reach(int i){(void)i;return 400;}   /* AltBotMod V10 */
 static int bot_spot(char*p,char*t){(void)p;(void)t;return 1;}static void bot_log(const char*f,...){(void)f;}
 static int ray_cast(const float*a,const float*b,float*hit,float*n){(void)a;(void)n;rays++;memcpy(hit,b,12);return b[2]<blockedBelow;}
@@ -244,7 +252,17 @@ int main(void){
  blockedBelow=1000;detect_tick(0);assert(rays==8 && !selected);
  rays=0;blockedBelow=8;detect_tick(0);assert(rays==4 && selected==players[4] && selectedDistance==8);
  rays=0;blockedBelow=0;*(int*)(players[1]+8)=1;detect_tick(0);assert(rays==1 && selected==players[2]);
- puts("PASS: actual full 64-player range/FOV shortlist bounds LOS at eight rays, nearest visible enemy and friendly exclusion");return 0;
+ puts("PASS: actual full 64-player range/FOV shortlist bounds LOS at eight rays, nearest visible enemy and friendly exclusion");
+ // AltBotMod Hunt: the human this bot hunts is tried first (10 m off beats 4 m); gunfire within HearMeters is heard behind it
+ selected=NULL;quarry=players[5];detect_tick(0);assert(selected==players[5]);quarry=NULL;
+ for(int k=1;k<63;k++)*(int*)(players[k]+8)=1;   /* one enemy left: 63, 60 m behind the bot, not spotted */
+ bodies[63][2]=-60;notSpotted=players[63];blockedBelow=-1000;
+ selected=NULL;detect_tick(0);assert(!selected);
+ heard=players[63];selected=NULL;detect_tick(0);assert(selected==players[63]);
+ bodies[63][2]=-200;selected=NULL;detect_tick(0);assert(!selected);   /* further than HearMeters (120) */
+ g_enhanced.hearMeters=0;bodies[63][2]=-60;selected=NULL;detect_tick(0);assert(!selected);
+ puts("PASS: AltBotMod Hunt - the hunted human is tried first; gunfire within HearMeters is heard behind a bot, not further, not with HearMeters=0");
+ return 0;
 }
 '''
 

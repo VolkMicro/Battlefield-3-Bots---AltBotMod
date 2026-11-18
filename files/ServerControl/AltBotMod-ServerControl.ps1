@@ -294,7 +294,7 @@ foreach ($inst in $Instances) {
     $u.Settings = New-Button 'All bot settings...' 300 22 170 26   # (AltBotMod V11)
     $g4.Controls.Add((New-Label 'Difficulty' 14 62))
     $u.Diff = New-Object Windows.Forms.ComboBox; $u.Diff.DropDownStyle = 'DropDownList'; $u.Diff.Location = New-Object Drawing.Point(110, 58); $u.Diff.Width = 150
-    foreach ($d in @('off (V8 combat)', 'easy', 'normal', 'hard', 'veteran', 'elite')) { [void]$u.Diff.Items.Add($d) }
+    foreach ($d in @('off (V8 combat)', 'easy', 'normal', 'hard', 'veteran', 'elite', 'nightmare')) { [void]$u.Diff.Items.Add($d) }
     $u.DiffApply = New-Button 'Set' 270 56 70 26
     $g4.Controls.Add((New-Label 'Tickets %' 14 96))
     $u.Tickets = New-Object Windows.Forms.NumericUpDown; $u.Tickets.Minimum = 1; $u.Tickets.Maximum = 2000; $u.Tickets.Increment = 25; $u.Tickets.Value = 100; $u.Tickets.Location = New-Object Drawing.Point(110, 92); $u.Tickets.Width = 70
@@ -507,7 +507,7 @@ function Refresh-Instance($u, [bool]$full) {
     if ($null -ne $bc) { $row.SubItems[8].Text = [string]$bc; if ($full) { $u.Bots.Value = [Math]::Max(0, [Math]::Min(64, $bc)) } }
     if ($full) {
         $d = Get-BmInstanceSetting $dir $inst 'Difficulty'
-        $lv = 5; if ($d) { $names = @('off', 'easy', 'normal', 'hard', 'veteran', 'elite'); $j = [Array]::IndexOf($names, $d.ToLower()); if ($j -ge 0) { $lv = $j } elseif ($d -match '^[0-5]$') { $lv = [int]$d } }
+        $lv = 5; if ($d) { $names = @('off', 'easy', 'normal', 'hard', 'veteran', 'elite', 'nightmare'); $j = [Array]::IndexOf($names, $d.ToLower()); if ($j -ge 0) { $lv = $j } elseif ($d -match '^[0-6]$') { $lv = [int]$d } }
         $u.Diff.SelectedIndex = $lv
     }
     $u.Start.Enabled = -not $u.Online; $u.Stop.Enabled = $true
@@ -610,7 +610,7 @@ foreach ($inst in $Instances) {
             Invoke-BmSimple (Get-Conn $x.Inst) @('mapList.runNextRound') } })
     $u.BotsApply.Add_Click({ $x = $this.Tag; $n = [int]$x.Bots.Value
         Run-Action $x "bot count set to $n" { Set-BmBotCount $dir $x.Inst $n; $null } })
-    $u.DiffApply.Add_Click({ $x = $this.Tag; $names = @('off', 'easy', 'normal', 'hard', 'veteran', 'elite'); $lv = $names[[Math]::Max(0, $x.Diff.SelectedIndex)]
+    $u.DiffApply.Add_Click({ $x = $this.Tag; $names = @('off', 'easy', 'normal', 'hard', 'veteran', 'elite', 'nightmare'); $lv = $names[[Math]::Max(0, $x.Diff.SelectedIndex)]
         Run-Action $x "bot difficulty set to $lv (kept in BotMod\enhanced_$($x.Inst.GamePort).ini)" {
             Set-BmInstanceSetting $dir $x.Inst 'Difficulty' $lv; Send-BmBotCommand $dir $x.Inst "difficulty $lv"; $null } })
     $u.TicketsApply.Add_Click({ $x = $this.Tag; $n = [int]$x.Tickets.Value

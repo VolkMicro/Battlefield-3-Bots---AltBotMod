@@ -1,5 +1,7 @@
 # AltBotMod - Release 1.2
 
+> **Fork:** AltBotMod Release 1.2 by [sumemailadress-eng](https://github.com/sumemailadress-eng/Battlefield-3-Bots---AltBotMod) plus the [Hunt](#hunt-this-build) changes: bots hunt the human players, the `nightmare` gunfight level, hearing, the recon fix. Branch `hunt`; `main` follows the original.
+
 **AltBotMod** adds AI bots to a Battlefield 3 dedicated server. It is a native mod: no Venice Unleashed, and players need nothing extra. It runs on the ALP, bf4play and BF-Portable builds of `bf3_server_Final.exe`; the installer checks for that file before it changes anything.
 
 > **Version note:** this is public **Release 1.2**. It is built from the internal development line **V35.2 "New Ground"** (Release 1.1 was internal V35.1, Release V1 was internal V34 "Squad Up"). The internal version number appears in the server log (`enhanced: AltBotMod V35.2 - New Ground`). Release notes and the full development history are in [CHANGELOG-AltBotMod.md](CHANGELOG-AltBotMod.md).
@@ -13,6 +15,16 @@
 - **Clearer log lines:** routes are called "saved routes" / "saved roads" and the mesh "objective mesh" everywhere.
 
 Earlier releases: Release 1.1 fixed server lag and idle boats on maps with boats, added Squad Rush on 12 more maps, bots spreading out and avoiding spots where their team just died. Details: [CHANGELOG-AltBotMod.md](CHANGELOG-AltBotMod.md#release-12-internal-v352).
+
+## Hunt (this build)
+
+On top of Release 1.2 this build makes the bots come for the human players and fight like they mean it. Details and settings: [Hunt and nightmare](#hunt-and-nightmare).
+
+- **Bots hunt the human players** (`Hunt=1`). For every human on foot up to `HuntersPerPlayer` (8) bots of the other team, the nearest free ones, go after it: one straight in, the others round its left, its right and from behind, so it is caught from several sides. The rest of the team plays the objectives (at most 60% of a team hunts).
+- **New gunfight level `nightmare`.** Elite's aim with no let-up: never runs for cover from an enemy within 40 m, closes in on every fight and chases a target that ducked away for 20 s, rounding the corner with its rifle up; quick, irregular side steps close in; looks round every 0.3 s.
+- **Hearing** (`HearMeters=120`): gunfire is heard whichever way a bot faces; it turns on a shooter it can see.
+- **Fix: snipers are snipers again.** Since V28 (gamertags) recon bots were taken for assault and ran onto the flags with bolt-action rifles; they climb to their perches again.
+- **The launchers' updater looks at this fork** (`files\ServerControl\AltBotMod-Release.txt`), so a release of the original never replaces the Hunt build. Until this fork publishes a release, the Updates tab says the repository has none.
 
 > **Status:** the features below were built from real server logs and tested offline with automated checks and sanitizer builds. Several features have not yet been run in a live round. See [Not yet tested in a live round](#not-yet-tested-in-a-live-round).
 
@@ -323,6 +335,29 @@ Settings are in `enhanced.ini`, section `[AltBotMod]`. They are also editable in
 | `VehicleCountermeasures` | 1 | Smoke from bot tanks and IFVs when hit. |
 | `VehicleDamageTaken` | 1 | Damage vehicles take, 0.25x to 4x. |
 | `VehicleDamageDealt` | 1 | Damage done from vehicles, 0.25x to 4x. |
+| `Difficulty` | elite (`nightmare` in the shipped `enhanced.ini`) | Gunfight level: off, easy, normal, hard, veteran, elite, nightmare. |
+| `Hunt` | 1 | Bots go after the human players (see below). 0 = objectives only. |
+| `HuntersPerPlayer` | 8 | Bots hunting one human at a time (0-32; never more than 60% of a team). |
+| `HuntIntelSeconds` | 6 | How often the hunters learn roughly where a player nobody sees is. 0 = only sight, gunfire and spotting. |
+| `HuntIntelMeters` | 12 | How far off that rough fix is. |
+| `HuntMaxMeters` | 700 | A bot further than this from the player is not sent after it. |
+| `HearMeters` | 120 | Gunfire this close is heard all round. 0 = off. |
+
+### Hunt and nightmare
+
+**Who hunts.** Three times a second the mod looks at the human players. For each one alive on foot (or in a ground vehicle) it sends the nearest free bot of the other team that is not busy: not in a vehicle, not under a player's order or a recovery order, not arming or defusing an M-COM, not a recon (snipers take their perches), at least 10 s after its spawn. One more joins per pass until `HuntersPerPlayer` are on it, never more than 60% of a team. A human in an aircraft is left to the AA. In a ground vehicle only hunters with a launcher keep after it.
+
+**How they come.** The first hunter goes straight at the player; the second round its left, the third round its right, the fourth from behind (a point 25-40 m out on that side, then in), and so on. The side is fixed when the bot is sent, as a compass bearing from the player, so it holds while the player moves. Hunters run while far and walk the last 30 m, so they can shoot the moment they see the player. A route is renewed when the player is 8 m or more from where it was planned.
+
+**What they know.** Anything a bot of their team sees (exact), the player's gunfire (the minimap's red dot, exact) and a spot (exact). Otherwise a rough fix every `HuntIntelSeconds`, up to `HuntIntelMeters` off. A fresh life gets 6 s before the first rough fix, so a spawn is not given away at once. At the fix with nobody there a hunter looks round until the next one. Nothing new for 45 s (only with `HuntIntelSeconds=0`): it plays the objectives until something turns up.
+
+**When they stop.** The player dies (its next life gets new hunters, the nearest then), boards an aircraft or leaves; the hunter dies, takes a vehicle, gets an order, finds no route four times (30 s before it can hunt again); `Hunt=0` or `!hunt off`. A bot let go goes back to the objectives and plans its route afresh.
+
+**nightmare** differs from elite only in what it does, not in how it aims: the same fire window and pauses. It never breaks for cover from an enemy within 40 m (further off: below 25 health, losing the exchange, outnumbered or reloading under fire); it closes in on every fight it starts on the move (returning fire, a close threat, back out of cover) and chases a target that ducked away for 20 s, after its footsteps once it reaches the spot it was last seen; within 25 m it walks the chase with its rifle on the target; it steps left and right at full speed, irregularly, whenever it trades shots within 35 m (`SideSteps=0` still means none); it looks round every 0.3 s, engages from 380 m and keeps a fight going while the target is in sight. Easy to elite are unchanged.
+
+**In game:** `!hunt` shows the state; admins: `!hunt on`, `!hunt off`, `!hunt <0-32>` (bots per player), until a restart or `!botconfig reload`. Console: `hunt [on|off|<n>]`, `difficulty nightmare`.
+
+**Log lines:** `hunt: on - up to 8 bot(s) hunt each human player`, `hunt: X goes after Y (N m away, round its left)`, `hunt: X is round its left of Y - goes in`, `hunt: X stops hunting Y (why)`, and with the status (`!botdiag`) `hunt: on - ... N hunting now - sent, let go, routes, exact / rough fixes`; `difficulty: nightmare also - no cover from an enemy within 40 m, ...`.
 
 ---
 

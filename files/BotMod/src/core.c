@@ -170,6 +170,15 @@ static void enhanced_level_reset(void);
 static void air_tick(int i);
 static int director_target(int i,int *role);
 static void director_tick(void);
+// AltBotMod Hunt (hunt_native.inc): bots that go looking for the human players
+static void hunt_director_tick(void);
+static int hunt_brain_tick(int i, char *soldier);
+static int hunt_owns(int i);
+static char *hunt_quarry(int i);
+static void hunt_saw(char *pl, const float *pos);
+static void hunt_status(void);
+static void hunt_command(const char *who, const char *arg);
+static int fired_within(char *pl, unsigned frames);
 static void fleet_air_dispatch(void);
 static void fleet_abandoned_dispatch(void);
 static void air_consider(int i);
@@ -3803,6 +3812,7 @@ static void brain_tick(int i)
         if (b->task == TASK_NONE) choose_local_objective(i, "got out of a vehicle");
     }
     if (b->task == TASK_NONE && supply_wait_tick(i, soldier)) return;   // V11: waiting for the medic / ammo it asked for
+    if (b->task == TASK_NONE && hunt_brain_tick(i, soldier)) return;   // AltBotMod Hunt: on its way to a human player
     if (!mode_is_cq()) { mode_brain_tick(i,soldier); return; }
     if(g_fleet[i].vehicle && H->frame<g_fleet[i].until && b->task==TASK_NONE) {
         // Keep the reserved vehicle request alive while its search is queued.
@@ -4381,6 +4391,22 @@ static void difficulty_status(void)
             bm_difficulty_name(g_enhanced.difficulty), g_enhanced.randomDifficulty ? " (each bot one level either side)" : "",
             P->reaction, P->burst / 12.0f, P->pause / 10.0f, P->aimMargin, P->aimTol, P->fightRange, P->engageRange, P->detectRange,
             P->fov, fmaxf(P->advanceStop, 6.0f), P->coverBelow, P->strafe, P->jumpFight, P->jumpRun, P->farCrouch, P->farCrouchChance * 100, P->ads);
+    if (P->noCoverMeters > 0 || P->push || P->dodge || P->chaseSeconds > 0 || P->detectSeconds > 0)   // AltBotMod Hunt (nightmare)
+        bot_log("difficulty: %s also - no cover from an enemy within %.0f m, %s, chases %.0f s, %s, looks round every %.2f s",
+                bm_difficulty_name(g_enhanced.difficulty), P->noCoverMeters, P->push ? "closes in on every fight on the move" : "closes in as before",
+                P->chaseSeconds, P->dodge >= 3 && g_enhanced.sideSteps > 0 ? "quick side steps from 35 m in" : "side steps by SideSteps",
+                P->detectSeconds > 0 ? P->detectSeconds : 0.5f);
+}
+// AltBotMod Hunt: the nightmare level's fight rules (0 fields in the other levels: their behaviour is unchanged)
+static int fight_stands_ground(int i, float enemyMeters)   // too close to turn its back on: no running for cover
+{
+    const BMDifficulty *P = bot_profile(i);
+    return P && P->noCoverMeters > 0 && isfinite(enemyMeters) && enemyMeters < P->noCoverMeters;
+}
+static float enemy_meters(char *soldier, char *enemy)   // how far an enemy player's soldier is (1e9 when unknown)
+{
+    char *es = enemy && player_exists(enemy) ? *(char **)(enemy + OFF_PLAYER_SOLDIER) : NULL;
+    return soldier && es ? sqrtf(dist2((float *)(soldier + OFF_SOLDIER_POSITION), (float *)(es + OFF_SOLDIER_SPAWN_POSITION))) : 1e9f;
 }
 #define FIGHT_HEALTH           65.0f
 #define FIGHT_MAX_FRAMES       ((unsigned)(20 * 30 * bm_aggr(&g_enhanced,1,1.25f,1.5f)))   // V8: 30 s at Aggression 2
@@ -4395,7 +4421,10 @@ static void difficulty_status(void)
 #define FIGHT_RANGE            (g_enhanced.infantryRange * 1.15f * bm_aggr(&g_enhanced,1,1.1f,1.15f))
 
 #define RECON_RANGE_FACTOR     1.5f      // recon see, engage and keep fighting infantry this much further out
-static int is_recon(int i) { return strstr((char *)H->bots[i] + OFF_PLAYER_ONLINE_NAME, "Recon") != NULL; }
+// AltBotMod Hunt: the roster identity, not the name it plays under. Since V28 a bot plays under a gamertag (BotNames=1,
+// the default), its name no longer says "Recon", and every recon bot was taken for an assault: no overwatch, no firing
+// spots, no sniper ranges - bolt-action rifles ran onto the flags.
+static int is_recon(int i) { return strstr(BOT_ROSTER(H->bots[i]), "Recon") != NULL; }
 #define RECON_SPOTTED_RANGE    (g_enhanced.reconRange * bm_aggr(&g_enhanced,1,1.2f,1.35f))
 // How far a bot keeps fighting a soldier: recon go further, much further for a spotted one.
 static float fight_range(int i, char *t)
@@ -4414,6 +4443,11 @@ static float fight_range(int i, char *t)
 }
 #define FIGHT_AIM_HEIGHT       0.55f     // above the target's feet (0.9 and 1.2 still went high: the real camera sits above our 1.6 m eye)
 #define FIGHT_CHASE_FRAMES     ((unsigned)(6 * 30 * bm_aggr(&g_enhanced,1,1.25f,1.5f)))   // V8: brutal bots chase 9 s
+static unsigned fight_chase_frames(int i)   // AltBotMod Hunt: the profile's chase time when it has one (nightmare: 20 s)
+{
+    const BMDifficulty *P = bot_profile(i);
+    return P && P->chaseSeconds > 0 ? (unsigned)(P->chaseSeconds * 30) : FIGHT_CHASE_FRAMES;
+}
 #define ENGAGE_COOLDOWN_V8     ((unsigned)(2 * 30 * bm_aggr(&g_enhanced,1,0.5f,0.25f)))
 #define ENGAGE_COOLDOWN_FRAMES engage_cooldown_frames(i)
 #define ENGAGE_BREATHER_FRAMES engage_breather_frames(i)
@@ -4423,6 +4457,7 @@ static char *g_cooldownWho[MAX_BOTS];  // advancing bots look for a target that 
 #define FIGHT_ADVANCE_STOP_V8  bm_aggr(&g_enhanced,55.0f,42.0f,32.0f)   // V8: brutal bots close to 32 m (V7: 55)
 #define FIGHT_ADVANCE_STOP     (bot_profile(i) ? fmaxf(bot_profile(i)->advanceStop, 6.0f) : FIGHT_ADVANCE_STOP_V8)   // V9: elite 8 m
 static unsigned char g_fightAdvance[MAX_BOTS], g_fightChase[MAX_BOTS], g_fightSlot[MAX_BOTS];
+static unsigned g_chaseFollowAt[MAX_BOTS];   // AltBotMod Hunt: when a chase last set off after the target
 static unsigned g_fightMoveUntil[MAX_BOTS], g_engageCooldown[MAX_BOTS];
 static float g_fightLast[MAX_BOTS][3], g_fightSpot[MAX_BOTS][3];
 static int soldier_ammo2(char *soldier, int slot, int *loaded, int *spare);
@@ -4533,6 +4568,13 @@ static void start_fight(int i, char *target, int retreat, const char *why)
     if (rush_operator_focus(i, target)) return;   // arming / defusing an M-COM: no fight with an enemy over 6 m away
     combat_motion_cancel(i);
     BotBrain *b = bot_brain(i);
+    // AltBotMod Hunt: a nightmare bot on the move closes in on whoever it fights - returning fire, a close threat, back out of
+    // cover - and goes after it when it ducks out of sight. Not a guard or follower under a player's order, not one holding a
+    // flag, not a recon (a sniper keeps its distance). Callers that know better still set g_fightAdvance after this.
+    int push = 0;
+    {   const BMDifficulty *P = bot_profile(i);
+        int moving = b->task == TASK_NONE || ((b->task == TASK_COVER || b->task == TASK_FIGHT) && b->prevTask == TASK_NONE);
+        push = P && P->push && moving && !retreat && !(b->targetFlag >= 0 && b->waiting) && !is_recon(i) && !sniper_holding(i); }
     if (b->task == TASK_REPAIR) { b->serviceTarget = NULL; b->task = b->prevTask; }   // drop the repair
     if (b->task == TASK_NONE || b->task == TASK_DEFEND || b->task == TASK_FOLLOW) { b->prevTask = b->task; b->prevCommander = b->commander; }
     b->task = TASK_FIGHT;
@@ -4544,7 +4586,7 @@ static void start_fight(int i, char *target, int retreat, const char *why)
     g_fightRetreat[i] = (unsigned char)retreat;
     g_fightSeenAt[i] = H->frame;
     g_fightBursts[i] = 0;
-    g_fightAdvance[i] = g_fightChase[i] = 0;
+    g_fightAdvance[i] = (unsigned char)push; g_fightChase[i] = 0;
     g_fightMoveUntil[i] = 0;
     bot_nav(i)->mode = 1;
     bot_log("fight: %s fights %s (%s)", (char *)H->bots[i] + OFF_PLAYER_ONLINE_NAME, target + OFF_PLAYER_ONLINE_NAME, why);
@@ -4595,7 +4637,11 @@ static void fight_note_target_health(int i)
 static const char *cover_reason(int i, char *soldier, char *shooter)
 {
     float h = *(float *)(soldier + OFF_SOLDIER_HEALTH);
-    if (h < COVER_BELOW_HEALTH) return "badly hurt";
+    // AltBotMod Hunt (nightmare): a bot that runs from an enemy this close is shot in the back - it fights it out. Further
+    // off, its own health limit (25) instead of the fixed 40.
+    if (fight_stands_ground(i, enemy_meters(soldier, shooter))) return NULL;
+    {   const BMDifficulty *P = bot_profile(i);
+        if (h < (P && P->noCoverMeters > 0 ? P->coverBelow : COVER_BELOW_HEALTH)) return "badly hurt"; }
     {   // losing the exchange: hit again and again while the target is not getting hurt
         char *t = g_fightTarget[i], *ts = t && player_exists(t) ? *(char **)(t + OFF_PLAYER_SOLDIER) : NULL;
         float th = ts ? *(float *)(ts + OFF_SOLDIER_HEALTH) : 0;
@@ -4689,6 +4735,10 @@ static void cover_react(int i, char *soldier)
         float *me = (float *)(soldier + OFF_SOLDIER_POSITION);
         if (ss) {
             float *tp = (float *)(ss + OFF_SOLDIER_SPAWN_POSITION), dx = tp[0] - me[0], dz = tp[2] - me[2], d = sqrtf(dx * dx + dz * dz);
+            if (d > fight_range(i, shooter) && hunt_quarry(i) == shooter) {   // AltBotMod Hunt: the one it is after - no hiding, on it goes
+                hunt_saw(shooter, tp);
+                return;
+            }
             if (d > fight_range(i, shooter)) {
                 if (b->task != TASK_COVER && b->task != TASK_FIGHT && go_to_cover(i, soldier, shooter, eye))
                     bot_log("cover: %s hit by %s from %.0f m - out of reach, takes cover", pl + OFF_PLAYER_ONLINE_NAME, shooter + OFF_PLAYER_ONLINE_NAME, d);
@@ -4705,7 +4755,8 @@ static void cover_react(int i, char *soldier)
     }
     if (b->task != TASK_FIGHT) {   // always shoot back first
         {   const BMDifficulty *P = bot_profile(i);   // V9: badly hurt (below the profile's CoverBelowHealth): one burst, then cover
-            start_fight(i, shooter, P && h < P->coverBelow, P && h < P->coverBelow ? "returning fire - badly hurt" : "returning fire"); }
+            int hurt = P && h < P->coverBelow && !fight_stands_ground(i, enemy_meters(soldier, shooter));   // (Hunt: not from one this close)
+            start_fight(i, shooter, hurt, hurt ? "returning fire - badly hurt" : "returning fire"); }
         g_fightHitsTaken[i] = 1;
         fight_note_target_health(i);
         return;
@@ -4854,8 +4905,13 @@ static int fight_tick(int i, BotBrain *b, char *soldier)
     float aimValue = landing - g_aimBias[myPose] - g_aimFixH[i] - (g_aimFixV[i] + g_aimClimb[i] * (float)(firing > 90 ? 90 : firing)) * dh;
     aim[1] = tp[1] + aimValue;
     g_aimValue[i] = aimValue; g_aimValueAt[i] = H->frame; g_aimPose[i] = (unsigned char)myPose; g_aimLanding[i] = landing;
-    if (visible) { g_fightSeenAt[i] = H->frame; memcpy(g_fightLast[i], tp, 12); g_fightChase[i] = 0; }
-    else if (H->frame - g_fightSeenAt[i] > ((g_fightAdvance[i] || g_combatMove[i].until) ? FIGHT_CHASE_FRAMES : FIGHT_LOST_FRAMES)) { end_fight(i, b, "lost sight"); return 0; }
+    if (visible) {
+        g_fightSeenAt[i] = H->frame; memcpy(g_fightLast[i], tp, 12); g_fightChase[i] = 0;
+        hunt_saw(t, tp);   // AltBotMod Hunt: the hunters after this one know where it is
+        {   const BMDifficulty *P = bot_profile(i);   // AltBotMod Hunt (nightmare): no "long enough" while it is in sight
+            if (P && P->push && b->taskUntil < H->frame + 5 * 30) b->taskUntil = H->frame + 5 * 30; }
+    }
+    else if (H->frame - g_fightSeenAt[i] > ((g_fightAdvance[i] || g_combatMove[i].until) ? fight_chase_frames(i) : FIGHT_LOST_FRAMES)) { end_fight(i, b, "lost sight"); return 0; }
     {   // lead a moving target
         float lp[3];
         lead_point(i, t, tp, dh, lp);
@@ -4882,9 +4938,14 @@ static int fight_tick(int i, BotBrain *b, char *soldier)
         else nav->mode = 1;
         nav->targetYaw = yaw_towards(dx, dz);
     } else if (!g_fightChase[i]) {   // advancing and it went out of sight: go to where it was last seen
-        g_fightChase[i] = 1;
+        g_fightChase[i] = 1; g_chaseFollowAt[i] = H->frame;
         go_towards(i, soldier, g_fightLast[i][0], g_fightLast[i][1], g_fightLast[i][2]);
         bot_log("fight: %s lost sight of %s, going after it", (char *)H->bots[i] + OFF_PLAYER_ONLINE_NAME, t + OFF_PLAYER_ONLINE_NAME);
+    } else if (bot_profile(i) && bot_profile(i)->push && nav->mode != 3 && H->frame - g_chaseFollowAt[i] > 45) {
+        // AltBotMod Hunt (nightmare): at the spot it was last seen and nothing there - after it, where it went (its footsteps),
+        // instead of standing there until the chase time runs out
+        g_chaseFollowAt[i] = H->frame;
+        go_towards(i, soldier, tp[0], tp[1], tp[2]);
     }
     g_aimPitch[i] = atan2f(aim[1] - eye[1], dh);
     if (b->step != 0 && fight_grenade_tick(i, b, soldier, ts, visible, dh)) return 1;   // AltBotMod V9
@@ -4898,7 +4959,7 @@ static int fight_tick(int i, BotBrain *b, char *soldier)
         return 1;
     }
     if (b->step != 2 && fight_sidearm_swap(i, b, soldier, dh, visible)) return 1;   // AltBotMod V9: pistol, not a reload, close in
-    if (H->frame - g_hitAt[i] < 3 * 30 && !g_fightMoveUntil[i]) {
+    if (H->frame - g_hitAt[i] < 3 * 30 && !g_fightMoveUntil[i] && !fight_stands_ground(i, dh)) {   // (Hunt: reloads where it stands close in)
         int l, s;
         if (soldier_ammo2(soldier, 0, &l, &s) && l == 0 && s > 0) {
             float teye[3] = {tp[0], tp[1] + 1.6f, tp[2]};
@@ -4916,6 +4977,7 @@ static int fight_tick(int i, BotBrain *b, char *soldier)
             b->step = 3; b->stepAt = H->frame + 20;
             return 1;
         }
+        if (g_fightRetreat[i] && fight_stands_ground(i, dh)) g_fightRetreat[i] = 0;   // AltBotMod Hunt: it came too close to run from
         if (g_fightRetreat[i]) {   // hurt: that was the burst - now cover (fight on if there is none)
             float teye[3] = {tp[0], tp[1] + 1.6f, tp[2]};
             g_fightRetreat[i] = 0;
@@ -6907,6 +6969,13 @@ static void engage_seen(int i, char *t, char *veh, float d)
     }
 }
 
+// AltBotMod Hunt: frames between two looks round (15 = 0.5 s; nightmare 9 = 0.3 s)
+static unsigned detect_period(int i)
+{
+    const BMDifficulty *P = bot_profile(i);
+    unsigned n = P && P->detectSeconds > 0 ? (unsigned)(P->detectSeconds * 30 + 0.5f) : 15;
+    return n < 3 ? 3 : n > 30 ? 30 : n;
+}
 static void detect_tick(int i)
 {
     char *pl = H->bots[i], *s = *(char **)(pl + OFF_PLAYER_SOLDIER);
@@ -6920,8 +6989,9 @@ static void detect_tick(int i)
     char *best = NULL, *bestVeh = NULL;
     float bestD = 1e30f;
     unsigned bestK = 0;
-    struct { char *player, *vehicle; float distance; unsigned slot; } candidate[8];
+    struct { char *player, *vehicle; float distance, key; unsigned slot; } candidate[8];
     int nCandidates = 0;
+    char *quarry = hunt_quarry(i);   // AltBotMod Hunt: the human this bot hunts comes first when it is in sight
     for (unsigned k = 0; k < count && k < 64; k++) {
         char *t = arr[k];
         if (!t || t == pl || player_team(t) == player_team(pl)) continue;
@@ -6931,18 +7001,21 @@ static void detect_tick(int i)
         float dx = tp[0] - me[0], dy = tp[1] - me[1], dz = tp[2] - me[2], d = sqrtf(dx * dx + dy * dy + dz * dz);
         if (d < 0.5f) continue;
         float facing = (dx * fx + dz * fz) / sqrtf(dx * dx + dz * dz + 1e-6f);
+        // AltBotMod Hunt: gunfire within HearMeters is heard whichever way the bot faces (it turns on a shooter it can see)
+        int heard = g_enhanced.hearMeters > 0 && d <= g_enhanced.hearMeters && fired_within(t, 30);
         int own = d <= (veh ? DETECT_RANGE_VEHICLE : is_recon(i) ? RECON_SPOTTED_RANGE : DETECT_RANGE_INFANTRY) &&
-                  (d <= DETECT_ALL_AROUND || facing >= DETECT_COS_HALF_FOV);
+                  (d <= DETECT_ALL_AROUND || facing >= DETECT_COS_HALF_FOV || heard);
         // V10: a sniper glassing through its scope (35 deg either side of where it looks) sees soldiers out to its reach
         if (!own && !veh && d <= sniper_reach(i) && facing >= 0.82f && sniper_rifle(i)) own = 1;
         // not in view: a soldier a teammate has spotted shows on the map / 3D marker - look for it there
         if (!own && (veh || d > (is_recon(i) ? sniper_reach(i) : ENGAGE_RANGE) || !spotted_cached(t))) continue;
+        float key = t == quarry ? d * 0.35f : d;   // (the order the sight rays try them in)
         int at = nCandidates;
-        if (at == 8) { if (d >= candidate[7].distance) continue; at = 7; }
+        if (at == 8) { if (key >= candidate[7].key) continue; at = 7; }
         else nCandidates++;
-        while (at > 0 && d < candidate[at-1].distance) { candidate[at] = candidate[at-1]; at--; }
+        while (at > 0 && key < candidate[at-1].key) { candidate[at] = candidate[at-1]; at--; }
         candidate[at].player = t; candidate[at].vehicle = veh;
-        candidate[at].distance = d; candidate[at].slot = k;
+        candidate[at].distance = d; candidate[at].key = key; candidate[at].slot = k;
     }
     // Range/FOV tests cover every player; bound expensive sight rays.
     // AltBotMod V17: soldiers on foot first, then vehicles - a helicopter overhead no longer hides the soldier behind it
@@ -6966,6 +7039,8 @@ static void detect_tick(int i)
         break;
     }
     if (!best) return;
+    {   char *bs = *(char **)(best + OFF_PLAYER_SOLDIER);   // AltBotMod Hunt: seen - its hunters know where it is
+        if (bs) hunt_saw(best, (float *)(bs + OFF_SOLDIER_SPAWN_POSITION)); }
     // identify first: spot it unless it was spotted by a bot just now
     if (!(g_spottedWho[bestK] == best && H->frame - g_spottedAt[bestK] < SPOT_COOLDOWN_FRAMES) && bot_spot(pl, best)) {
         g_spottedAt[bestK] = H->frame;
@@ -9203,11 +9278,13 @@ __declspec(dllexport) void botmod_command(char *line)
         const char *arg = line[10] ? line + 11 : "";
         if (*arg) {
             int level = bm_difficulty_parse(arg);
-            if (level < 0) { bot_log("difficulty: unknown level '%s' (off, easy, normal, hard, veteran, elite)", arg); return; }
+            if (level < 0) { bot_log("difficulty: unknown level '%s' (off, easy, normal, hard, veteran, elite, nightmare)", arg); return; }
             g_enhanced.difficulty = level;
             bot_log("difficulty: set to %s (until restart; Difficulty= in enhanced.ini keeps it)", bm_difficulty_name(level));
         }
         difficulty_status();
+    } else if (!strncmp(line, "hunt", 4) && (!line[4] || line[4] == ' ')) {   // AltBotMod Hunt: hunt [on|off|<bots per player>]
+        hunt_command(NULL, line[4] ? line + 5 : "");
     } else if (!strncmp(line, "botcount ", 9)) {
         int n = atoi(line + 9);
         *wanted_bots() = n < 0 ? 0 : n > MAX_BOTS ? MAX_BOTS : n;
@@ -9781,6 +9858,7 @@ static void chat_command(const char *who, const char *text)
         chat_say("[AltBotMod] enhanced.ini reloaded; see server console for accepted/ignored settings");
         return;
     }
+    if (!_stricmp(cmd, "hunt")) { hunt_command(who, arg); return; }   // AltBotMod Hunt: !hunt [on|off|<bots per player>]
     if (squad_order_chat(who, cmd, arg)) return;   // AltBotMod V34: !attack / !defend / !orders
     if (!_stricmp(cmd, "help")) {
         chat_say("[AltBotMod] !bots = status | admins: !bots <0-%d> or !bots fill = bot count, !bots off / on = pause / resume, !map <name>, !pos", MAX_BOTS);
@@ -10506,7 +10584,8 @@ static void close_threat_tick(int i)
         b->prevTask = TASK_NONE; b->prevCommander = NULL;
     }
     start_fight(i, best, 0, "enemy close");
-    g_fightAdvance[i] = 0;
+    {   const BMDifficulty *P = bot_profile(i);   // (AltBotMod Hunt: a nightmare bot on the move goes after it if it ducks away)
+        if (!(P && P->push)) g_fightAdvance[i] = 0; }
     if (!spotted_cached(best)) bot_spot(pl, best);   // and call it out
 }
 
@@ -12469,6 +12548,7 @@ static int boat_lane_to(int f, const float *from);   // AltBotMod V22 (trace_nat
 #include "abandoned_dispatch.inc"
 #include "modes_native.inc"
 #include "director_native.inc"
+#include "hunt_native.inc"   // AltBotMod Hunt
 #include "trace_native.inc"
 #include "route_actions_native.inc"   // AltBotMod V15
 #include "emplacement_native.inc"
@@ -12548,6 +12628,7 @@ static void enhanced_status(void)
             g_enhanced.infantryRange,g_enhanced.reconRange,g_enhanced.armorRange,g_enhanced.armorInfantryRange,
             g_enhanced.reactionSeconds,g_enhanced.weaponVariety,g_enhanced.weaponAttachments,variants);
     difficulty_status();
+    hunt_status();   // AltBotMod Hunt
     air_status();
     fleet_status();
     bot_log("enhanced: staged-driving=%d transport-landings=%d deployment-learning=%d weapon-handling=%d armor-tactics=%d infantry-support=%d traffic=%d diagnostics=%d",
@@ -12638,6 +12719,7 @@ static void enhanced_forget(int i)
     FORGET(g_fightAdvance);
     FORGET(g_fightBursts);
     FORGET(g_fightChase);
+    FORGET(g_chaseFollowAt);   // AltBotMod Hunt
     FORGET(g_fightHitsTaken);
     FORGET(g_fightLast);
     FORGET(g_fightMoveUntil);
@@ -12651,6 +12733,8 @@ static void enhanced_forget(int i)
     FORGET(g_fineAim);
     FORGET(g_fleet);
     FORGET(g_director.unit);FORGET(g_directorIdentity);g_directorAt=0;
+    FORGET(g_hunterOf);FORGET(g_hunterSoldier);FORGET(g_hunterRole);FORGET(g_huntDriving);FORGET(g_huntPhase);FORGET(g_huntPending);   // AltBotMod Hunt
+    FORGET(g_huntFails);FORGET(g_huntAngle);FORGET(g_huntGoal);FORGET(g_huntPlanAt);FORGET(g_huntScanAt);FORGET(g_huntCooldown);FORGET(g_huntRoutedAt);
     FORGET(g_gliding);
     FORGET(g_grenadesThisLife);
     FORGET(g_gunAimH);
@@ -12969,6 +13053,7 @@ __declspec(dllexport) void botmod_tick(void)
     g_where="fleet inventory and assignments";
     fleet_inventory_tick();
     director_tick();
+    g_where="hunt";hunt_director_tick();   // AltBotMod Hunt: who goes after the human players
     fleet_air_dispatch();
     fleet_abandoned_dispatch();
     director_summary_tick();
@@ -13155,7 +13240,7 @@ __declspec(dllexport) void botmod_tick(void)
         }
         g_where = "detect_tick";
         if (!g_air[i].phase) {
-            if ((H->frame + i * 2) % 15 == 0) detect_tick(i);
+            if ((H->frame + i * 2) % detect_period(i) == 0) detect_tick(i);   // (AltBotMod Hunt: the profile's rate)
             else if ((H->frame + i) % 6 == 0) close_threat_tick(i);
         }
         activity_tick(i);

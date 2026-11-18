@@ -49,6 +49,8 @@ void bm_defaults(BMConfig *c)
     c->learning = c->learnFromPlayers = 1;   // AltBotMod V21
     c->sideSteps = 1;   // AltBotMod V14
     c->routeActions = 1; c->reconBeacons = 1;   // AltBotMod V15
+    c->hunt = 1; c->huntersPerPlayer = 8; c->huntIntelSeconds = 6; c->huntIntelMeters = 12; c->huntMaxMeters = 700;   // AltBotMod Hunt
+    c->hearMeters = 120;
     bm_air_defaults(&c->air);
 }
 int bm_set(BMConfig *c, const char *key, const char *value)
@@ -89,6 +91,9 @@ int bm_set(BMConfig *c, const char *key, const char *value)
         BOOL_KEY("LiveMap", liveMap), BOOL_KEY("Learning", learning), BOOL_KEY("LearnFromPlayers", learnFromPlayers), FLOAT_KEY("LiveMapSeconds", liveMapSeconds, 0.5f, 10),
         FLOAT_KEY("LiveMapTrailSeconds", liveMapTrailSeconds, 1, 60), INT_KEY("LiveMapKeepMB", liveMapKeepMB, 5, 1000),
         INT_KEY("SideSteps", sideSteps, 0, 2),
+        BOOL_KEY("Hunt", hunt), INT_KEY("HuntersPerPlayer", huntersPerPlayer, 0, 32),   // AltBotMod Hunt
+        FLOAT_KEY("HuntIntelSeconds", huntIntelSeconds, 0, 60), FLOAT_KEY("HuntIntelMeters", huntIntelMeters, 0, 100),
+        FLOAT_KEY("HuntMaxMeters", huntMaxMeters, 50, 3000), FLOAT_KEY("HearMeters", hearMeters, 0, 400),
         BOOL_KEY("RouteActions", routeActions), BOOL_KEY("ReconBeacons", reconBeacons),   // AltBotMod V15
         FLOAT_KEY("InfantryReactionSeconds", reactionSeconds, 0.1f, 2),
         FLOAT_KEY("InfantryAimMarginMeters", infantryAimMargin, 0.08f, 0.5f),
@@ -481,21 +486,27 @@ float bm_vehicle_target_score(const BMVehicleProfile *p,enum BMTargetKind kind,f
 // EngageCooldownSeconds BreatherSeconds CoverBelowHealth AdvanceStopMeters CoverHoldSeconds SprintMeters
 // FightSprintMeters FightStrafe JumpWhileRunningSeconds JumpWhileFightingSeconds FarCrouchMeters FarCrouchChance
 // AimSettleFrames AdsRangeMeters GuardSeconds GuardSpreadSeconds AimWorseningMeters AimSkillSpread FireModel RangeFalloff
-static const BMDifficulty kLevels[5] = {
-    {0.80f,  8, 16, 0.040f, 0.30f, 0.25f, 1.5f,  90,  60,  70,  60.00f, 15.0f, 4.00f, 55, 15, 6, 30,  0, 0,   0,   0,    0, 0,    0, 50, 30, 15, 0.9f, 0.6f, 1, 0},
-    {0.50f, 12, 10, 0.050f, 0.35f, 0.15f, 2.0f, 120,  80,  90,  77.29f, 10.0f, 2.00f, 40, 15, 6, 20,  0, 0,   0,   0,    0, 0,    0, 50, 20, 10, 0,    0,    0, 0},
-    {0.30f, 14,  6, 0.055f, 0.40f, 0.10f, 3.0f, 170, 130, 150, 100.00f,  5.0f, 1.00f, 30, 12, 4, 12, 35, 0.6f, 6.0f, 0,  35, 0.25f, 5, 35, 12,  8, 0,    0.3f, 1, 0.5f},
-    {0.15f, 18,  4, 0.055f, 0.42f, 0.05f, 4.0f, 280, 230, 270, 130.00f,  2.0f, 0.40f, 20, 10, 3,  8, 30, 0.8f, 4.0f, 2.5f, 28, 0.45f, 3, 25,  8,  6, 0,    0.15f, 1, 0.9f},   // AltBotMod V26: veteran engages from 230 m (V25: 170, V22: 100), sees 270 m
-    {0.05f, 26,  2, 0.050f, 0.45f, 0.015f, 6.0f, 380, 300, 350, 170.00f, 0.5f, 0.10f, 10,  8, 2,  6, 25, 1.0f, 3.0f, 1.8f, 22, 0.60f, 1, 18,  5,  4, 0,   0.03f, 1, 1.2f},   // AltBotMod V26: elite engages from 300 m (V25: 240, V22: 130), sees 350 m in a 170-deg view, reacts in 0.05 s, aim lag 0.015 s, opens fire within 0.4 m
+static const BMDifficulty kLevels[BM_LEVELS] = {
+    {0.80f,  8, 16, 0.040f, 0.30f, 0.25f, 1.5f,  90,  60,  70,  60.00f, 15.0f, 4.00f, 55, 15, 6, 30,  0, 0,   0,   0,    0, 0,    0, 50, 30, 15, 0.9f, 0.6f, 1, 0,     0, 0, 0, 0, 0},
+    {0.50f, 12, 10, 0.050f, 0.35f, 0.15f, 2.0f, 120,  80,  90,  77.29f, 10.0f, 2.00f, 40, 15, 6, 20,  0, 0,   0,   0,    0, 0,    0, 50, 20, 10, 0,    0,    0, 0,     0, 0, 0, 0, 0},
+    {0.30f, 14,  6, 0.055f, 0.40f, 0.10f, 3.0f, 170, 130, 150, 100.00f,  5.0f, 1.00f, 30, 12, 4, 12, 35, 0.6f, 6.0f, 0,  35, 0.25f, 5, 35, 12,  8, 0,    0.3f, 1, 0.5f,  0, 0, 0, 0, 0},
+    {0.15f, 18,  4, 0.055f, 0.42f, 0.05f, 4.0f, 280, 230, 270, 130.00f,  2.0f, 0.40f, 20, 10, 3,  8, 30, 0.8f, 4.0f, 2.5f, 28, 0.45f, 3, 25,  8,  6, 0,    0.15f, 1, 0.9f, 0, 0, 0, 0, 0},   // AltBotMod V26: veteran engages from 230 m (V25: 170, V22: 100), sees 270 m
+    {0.05f, 26,  2, 0.050f, 0.45f, 0.015f, 6.0f, 380, 300, 350, 170.00f, 0.5f, 0.10f, 10,  8, 2,  6, 25, 1.0f, 3.0f, 1.8f, 22, 0.60f, 1, 18,  5,  4, 0,   0.03f, 1, 1.2f,  0, 0, 0, 0, 0},   // AltBotMod V26: elite engages from 300 m (V25: 240, V22: 130), sees 350 m in a 170-deg view, reacts in 0.05 s, aim lag 0.015 s, opens fire within 0.4 m
+    // AltBotMod Hunt: nightmare - elite's aim with no let-up. Engages from 380 m and sees all round, longer bursts close in
+    // (elite's pauses: the recoil still has to settle at range), next to no breather between fights; closes to 6 m and chases
+    // 20 s; never runs for cover from an enemy within 40 m (further off: below 25 hp, losing the exchange, outnumbered or
+    // reloading under fire); quick irregular side steps close in; looks round every 0.3 s.
+    {0.03f, 30,  2, 0.050f, 0.45f, 0.010f, 8.0f, 450, 380, 420, 180.00f, 0.2f, 0.05f, 25,  6, 2,  6, 50, 1.0f, 3.0f, 1.5f, 25, 0.50f, 0, 15,  4,  3, 0,   0.0f,  1, 1.3f,
+     40.0f, 20.0f, 1, 3, 0.3f},
 };
-static const char *const kLevelNames[6] = {"off", "easy", "normal", "hard", "veteran", "elite"};
+static const char *const kLevelNames[BM_LEVELS + 1] = {"off", "easy", "normal", "hard", "veteran", "elite", "nightmare"};
 const BMDifficulty *bm_difficulty_level(int level)
 {
     if (level < 1) level = 1;
-    if (level > 5) level = 5;
+    if (level > BM_LEVELS) level = BM_LEVELS;
     return &kLevels[level - 1];
 }
-const char *bm_difficulty_name(int level) { return level >= 0 && level <= 5 ? kLevelNames[level] : "?"; }
+const char *bm_difficulty_name(int level) { return level >= 0 && level <= BM_LEVELS ? kLevelNames[level] : "?"; }
 int bm_difficulty_parse(const char *text)
 {
     if (!text) return -1;
@@ -504,8 +515,8 @@ int bm_difficulty_parse(const char *text)
     while (text[n] && !isspace((unsigned char)text[n]) && n + 1 < sizeof t) { t[n] = text[n]; n++; }
     t[n] = 0;
     if (!n) return -1;
-    for (int k = 0; k <= 5; k++) if (equal_ci(t, kLevelNames[k])) return k;
-    if (n == 1 && t[0] >= '0' && t[0] <= '5') return t[0] - '0';
+    for (int k = 0; k <= BM_LEVELS; k++) if (equal_ci(t, kLevelNames[k])) return k;
+    if (n == 1 && t[0] >= '0' && t[0] <= '0' + BM_LEVELS) return t[0] - '0';
     return -1;
 }
 int bm_bot_difficulty(const BMConfig *c, const char *name)
@@ -515,7 +526,7 @@ int bm_bot_difficulty(const BMConfig *c, const char *name)
     unsigned h = 2166136261u;   // FNV-1a of the bot's name: the same bot keeps its level for the session
     for (const char *p = name; *p; p++) h = (h ^ (unsigned char)*p) * 16777619u;
     int level = c->difficulty + (int)(h % 3) - 1;
-    return level < 1 ? 1 : level > 5 ? 5 : level;
+    return level < 1 ? 1 : level > BM_LEVELS ? BM_LEVELS : level;
 }
 int bm_profile_burst(const BMDifficulty *d, int weaponBurst, float distance)
 {
@@ -546,6 +557,13 @@ int bm_dodge_style(const BMConfig *c, const BMDifficulty *P, BMDodgeStyle *o)
     int mode = c ? c->sideSteps : 1;
     if (!P || mode <= 0) { o->hopScale = 0; return 0; }
     if (P->strafe <= 0) { o->hopScale = mode >= 2 ? 1.0f : 3.0f; o->hopNeedsThreat = mode < 2; return 0; }
+    if (P->dodge >= 3) {
+        // AltBotMod Hunt (nightmare): what a good player does in a close gunfight - full-speed steps of 0.27-0.7 s, a pause of
+        // at most a quarter second, mostly back the other way but not always (bm_dodge_next: 65 % reverse), from 35 m in,
+        // shooting or not; hops between bursts at the profile's own rate
+        o->level = P->strafe; o->maxMeters = 35; o->closeMeters = 35; o->stepMin = 8; o->stepMax = 21;
+        o->restMin = 0; o->restMax = 8; o->hopScale = 1.0f; return 1;
+    }
     if (mode >= 2) {
         o->level = P->strafe * 0.9f; o->maxMeters = 80; o->closeMeters = 80; o->stepMin = 15; o->stepMax = 40;
         o->hopScale = 1.0f; return 1;

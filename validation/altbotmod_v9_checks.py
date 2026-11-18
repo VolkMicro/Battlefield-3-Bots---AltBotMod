@@ -25,16 +25,16 @@ int main(int argc, char **argv)
     assert(c.difficulty == 5 && !c.randomDifficulty);   // elite unless enhanced.ini says otherwise
     assert(bm_difficulty_parse("elite") == 5 && bm_difficulty_parse("Veteran") == 4 && bm_difficulty_parse(" hard ") == 3);
     assert(bm_difficulty_parse("normal") == 2 && bm_difficulty_parse("easy") == 1 && bm_difficulty_parse("off") == 0);
-    assert(bm_difficulty_parse("3") == 3 && bm_difficulty_parse("0") == 0 && bm_difficulty_parse("6") == -1 && bm_difficulty_parse("brutal") == -1);
+    assert(bm_difficulty_parse("3") == 3 && bm_difficulty_parse("0") == 0 && bm_difficulty_parse("6") == 6 && bm_difficulty_parse("7") == -1 && bm_difficulty_parse("brutal") == -1);
     assert(bm_set(&c, "Difficulty", "veteran") == 1 && c.difficulty == 4);
     assert(bm_set(&c, "Difficulty", "nope") == -1 && c.difficulty == 4);   // invalid input changes nothing
     assert(bm_set(&c, "RandomDifficulty", "1") == 1 && c.randomDifficulty == 1 && bm_set(&c, "RandomDifficulty", "2") == -1);
-    puts("PASS: Difficulty (off / easy..elite / 0-5) and RandomDifficulty read from enhanced.ini, elite by default, bad values ignored");
+    puts("PASS: Difficulty (off / easy..elite / nightmare (AltBotMod Hunt) / 0-6) and RandomDifficulty read from enhanced.ini, elite by default, bad values ignored");
     // the dev build's table, field by field, when its DLL is here (argv[1] = 5 x 31 values it holds)
     const BMDifficulty *e = bm_difficulty_level(5), *n = bm_difficulty_level(2);
     assert(e->reaction == 0.05f && e->burst == 26 && e->pause == 2 && e->aimMargin == 0.45f && e->engageRange == 300 && e->detectRange == 350);   /* V26: elite engages from 300 m (V25: 240, V22: 130) */
     assert(e->fov == 170 && e->advanceStop == 8 && e->coverBelow == 10 && e->strafe == 1.0f && e->jumpFight == 1.8f && e->farCrouch == 22 && e->ads == 18);
-    assert(n->burst == 12 && n->pause == 10 && bm_difficulty_level(9) == e && bm_difficulty_level(-3) == bm_difficulty_level(1));
+    assert(n->burst == 12 && n->pause == 10 && bm_difficulty_level(9) == bm_difficulty_level(6) && bm_difficulty_level(6) != e && bm_difficulty_level(-3) == bm_difficulty_level(1));
     if (argc > 1) {
         FILE *f = fopen(argv[1], "r"); assert(f);
         for (int lv = 1; lv <= 5; lv++) {
@@ -49,16 +49,16 @@ int main(int argc, char **argv)
         puts("PASS: easy and normal (2 x 31 profile values) equal the table in the dev's BotModCore.dll (read from its .rdata here); hard, veteran and elite are AltBotMod's sharper ones (V22-V26)");
     }
     // per-bot levels: one either side, never outside 1..5, the same for the same bot
-    c.difficulty = 5; c.randomDifficulty = 1; int seen[6] = {0};
+    c.difficulty = 5; c.randomDifficulty = 1; int seen[7] = {0};
     char name[32];
     for (int k = 0; k < 200; k++) { snprintf(name, sizeof name, "[BOT] Medic US %d", k); int l = bm_bot_difficulty(&c, name);
-        assert(l >= 4 && l <= 5 && l == bm_bot_difficulty(&c, name)); seen[l]++; }
+        assert(l >= 4 && l <= 6 && l == bm_bot_difficulty(&c, name)); seen[l]++; }
     assert(seen[4] > 20 && seen[5] > 20);
     c.difficulty = 3; for (int k = 0; k < 200; k++) { snprintf(name, sizeof name, "b%d", k); int l = bm_bot_difficulty(&c, name); assert(l >= 2 && l <= 4); seen[l]++; }
     assert(seen[2] && seen[3] && seen[4]);
     c.difficulty = 0; assert(bm_bot_difficulty(&c, "x") == 0);
     c.difficulty = 4; c.randomDifficulty = 0; assert(bm_bot_difficulty(&c, "x") == 4);
-    puts("PASS: RandomDifficulty gives each bot its own level one either side (stable per bot, clamped to easy..elite); off = V8 combat");
+    puts("PASS: RandomDifficulty gives each bot its own level one either side (stable per bot, clamped to easy..nightmare: elite mixes veteran, elite and nightmare since AltBotMod Hunt); off = V8 combat");
     // bursts and pauses: normal plays the weapon's own rhythm; elite holds the trigger ~1.7x longer and pauses a third
     assert(bm_profile_burst(n, 9, 10) == 9 && bm_profile_pause(n, 10) == 10);
     assert(bm_profile_burst(e, 9, 10) == 20 && bm_profile_burst(e, 9, 30) == 9 && bm_profile_burst(e, 9, 80) == 5);   // V23: close x2, at range at most x1.25 (recoil)

@@ -56,6 +56,13 @@ typedef struct BMConfig {
     int routeActions;             // AltBotMod V15: saved recorded actions - boarding spots, exit points, waits, crouch sections
     int reconBeacons;             // AltBotMod V15: recon bots set radio beacons at the recorded beacon spots
     int sideSteps;                // AltBotMod V14: 0 none, 1 short steps under fire / close in (default), 2 constant (V9-V13)
+    // AltBotMod Hunt: bots go looking for the human players instead of only running flag to flag (hunt_native.inc)
+    int hunt;                     // 1: up to huntersPerPlayer bots of the other team hunt each human on foot
+    int huntersPerPlayer;         // bots hunting one human at a time (0-32; never more than 60% of a team)
+    float huntIntelSeconds;       // how often the hunters get a rough fix on a human nobody sees (0: only sight, gunfire, spotting)
+    float huntIntelMeters;        // how rough that fix is (m)
+    float huntMaxMeters;          // a bot further than this from the human is not sent after it
+    float hearMeters;             // gunfire this close is heard all round (the bot turns on the shooter it can see); 0: off
 } BMConfig;
 // AltBotMod V9: combat profiles per difficulty level, taken from the BotMod public preview build our dev made
 // (2026-10-10; its BotModCore.dll carries this table - the values are read from it, the code that uses them is ours).
@@ -64,11 +71,18 @@ typedef struct BMDifficulty {
     float fightRange, engageRange, detectRange, fov, cooldown, breather, coverBelow, advanceStop, coverHold;
     float sprint, fightSprint, strafe, jumpRun, jumpFight, farCrouch, farCrouchChance; int settle;
     float ads, guard, guardSpread, aimWorsening, skillSpread; int fireModel; float rangeFalloff;
+    // AltBotMod Hunt (the nightmare level only; 0 in the five levels above, which keep their behaviour):
+    float noCoverMeters;   // never runs for cover from an enemy closer than this - turning its back loses the fight
+    float chaseSeconds;    // how long a target that ducked out of sight is chased (0: the Aggression default)
+    int push;              // 1: every fight on the move closes in and chases (returning fire, close threats, re-engaging)
+    int dodge;             // 3: quick, irregular side steps whenever it trades shots close in, whatever SideSteps says (0 there: none)
+    float detectSeconds;   // how often it looks round for enemies (0: every 0.5 s)
 } BMDifficulty;
+#define BM_LEVELS 6        // easy, normal, hard, veteran, elite, nightmare
 int bm_ranges_v25(BMConfig *c);   // AltBotMod V25: ranges at the V9-V24 defaults -> the V25 ones (1 when any moved)
-const BMDifficulty *bm_difficulty_level(int level);         // 1..5 (clamped)
+const BMDifficulty *bm_difficulty_level(int level);         // 1..6 (clamped)
 const char *bm_difficulty_name(int level);
-int bm_difficulty_parse(const char *text);                  // easy..elite / 1-5 / off|0 -> 0..5, -1 invalid
+int bm_difficulty_parse(const char *text);                  // easy..nightmare / 1-6 / off|0 -> 0..6, -1 invalid
 int bm_bot_difficulty(const BMConfig *c, const char *botName);  // the level this bot plays (0 = off)
 // Weapon burst / pause frames scaled by a profile (normal = 12 / 10 = the weapon's own rhythm).
 int bm_profile_burst(const BMDifficulty *d, int weaponBurst, float distance);

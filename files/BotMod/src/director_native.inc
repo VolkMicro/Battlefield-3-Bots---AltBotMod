@@ -47,7 +47,8 @@ static void director_tick(void)
         units[i].active=s && b->enabled && *(float *)(s+OFF_SOLDIER_HEALTH)>0;units[i].team=player_team(pl);
         // An active local/recovery order is obeyed by the brain; the director
         // must not overwrite it or keep a stale attack committed for this bot.
-        units[i].commanded=b->commander!=NULL || b->prevCommander!=NULL || g_drive[i].manual || local_order_active(i);
+        units[i].commanded=b->commander!=NULL || b->prevCommander!=NULL || g_drive[i].manual || local_order_active(i) ||
+                           hunt_owns(i);   // AltBotMod Hunt: on its way to a human player - no flag for it meanwhile
         units[i].mobile=g_air[i].phase && g_air[i].pilot && g_air[i].profile?
             (g_air[i].profile->kind==BM_AIR_JET?3:2):(g_drive[i].phase || player_vehicle(pl)!=NULL);
         units[i].avoid=b->avoidUntil>H->frame?b->avoidFlag:-1;
