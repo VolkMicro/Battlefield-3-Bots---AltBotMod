@@ -63,6 +63,8 @@ typedef struct BMConfig {
     float huntIntelMeters;        // how rough that fix is (m)
     float huntMaxMeters;          // a bot further than this from the human is not sent after it
     float hearMeters;             // gunfire this close is heard all round (the bot turns on the shooter it can see); 0: off
+    int snapAim;                  // AltBotMod Hunt v2: aim in a fight through the input's aim fields - 0 off, 1 nightmare, 2 every level
+    float snapAimDegrees;         // how fast that aim turns at most (degrees a second)
 } BMConfig;
 // AltBotMod V9: combat profiles per difficulty level, taken from the BotMod public preview build our dev made
 // (2026-10-10; its BotModCore.dll carries this table - the values are read from it, the code that uses them is ours).

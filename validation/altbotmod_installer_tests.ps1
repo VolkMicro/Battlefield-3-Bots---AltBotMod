@@ -83,7 +83,7 @@ try {
     $loaderHash = Hash (Join-Path $script:Pkg 'server/xinput9_1_0.dll')
     [IO.File]::WriteAllText((Join-Path $srv 'BotModCore.dll'), 'Previous core fixture')
     $active = Join-Path $bot 'enhanced.ini'
-    $existingSettings = "# User settings`nArmoredVehicles=1`nDriverWeapons=1`nJets=1`nHelicopters=1`nAircraftWeapons=1`nAirPilotsPerTeam=2`nJetAreaMarginMeters=600`n"
+    $existingSettings = "# User settings`nArmoredVehicles=1`nDriverWeapons=1`nJets=1`nHelicopters=1`nAircraftWeapons=1`nAirPilotsPerTeam=2`nJetAreaMarginMeters=600`nDifficulty=elite`n"
     [IO.File]::WriteAllText($active, $existingSettings)
     [IO.File]::WriteAllText((Join-Path $bot 'admins.txt'), 'TestPlayer')
     [IO.File]::WriteAllText((Join-Path $bot 'botcount.txt'), '32')
@@ -135,7 +135,8 @@ try {
     Assert ([IO.File]::ReadAllText($bat3) -ceq "set GAMEPORT=25302`r`nset PLAYERS=64`r`nstart bf3_server_Final.exe -maxPlayers %PLAYERS%`r`n") 'AltBotMod V34: its _StartServer3.bat PLAYERS=32 is put back to 64'
     Assert ((Hash (Join-Path $srv 'xinput9_1_0.dll')) -eq $loaderHash) 'Loader installed'
     Assert ((Hash (Join-Path $srv 'xinput9_1_0_orig.dll')) -eq $stockHash) 'Original XInput retained'
-    Assert ([IO.File]::ReadAllText($active).StartsWith($existingSettings.Replace('JetAreaMarginMeters=600', 'JetAreaMarginMeters=900'))) 'Existing enabled settings preserved (V34: the old jet-area default moved)'
+    Assert ([IO.File]::ReadAllText($active).StartsWith($existingSettings.Replace('JetAreaMarginMeters=600', 'JetAreaMarginMeters=900').Replace('Difficulty=elite', 'Difficulty=nightmare'))) 'Existing enabled settings preserved (V34: the old jet-area default moved; Hunt: elite -> nightmare)'
+    Assert (@([IO.File]::ReadAllLines($active) | Where-Object { $_ -match '^Difficulty=' }).Count -eq 1) 'AltBotMod Hunt: one Difficulty line (moved in place, not added again)'
     Assert ([IO.File]::ReadAllText($active).Contains('ReturnToBase=1')) 'Missing deployment return setting added'
     Assert ([IO.File]::ReadAllText($active).Contains('PassengerTakeover=1')) 'Missing takeover setting added'
     Assert ([IO.File]::ReadAllText((Join-Path $bot 'admins.txt')) -eq 'TestPlayer') 'Admins preserved'

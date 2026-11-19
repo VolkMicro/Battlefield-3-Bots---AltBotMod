@@ -344,6 +344,8 @@ $script:BmSettings = @(
     (New-BmSetting 'HuntIntelMeters' 'Combat' 'float' 0 100 12 'Rough fix error (m)' 'how far off that rough fix is'),
     (New-BmSetting 'HuntMaxMeters' 'Combat' 'float' 50 3000 700 'Hunt from (m)' 'a bot further than this from the player is not sent after it'),
     (New-BmSetting 'HearMeters' 'Combat' 'float' 0 400 120 'Hearing (m)' 'gunfire this close is heard whichever way a bot faces: it turns on a shooter it can see; 0 = off'),
+    (New-BmSetting 'SnapAim' 'Combat' 'int' 0 2 1 'Snap aim' 'in a fight a bot aims like a player (no slow turning, no spin past north); 0 off, 1 nightmare bots, 2 every level'),
+    (New-BmSetting 'SnapAimDegreesPerSecond' 'Combat' 'float' 90 3600 720 'Snap aim speed (deg/s)' 'how fast that aim swings at most; 720 = half a turn in a quarter of a second'),
     (New-BmSetting 'RandomDifficulty' 'Combat' 'bool' 0 1 0 'Mixed levels' 'each bot plays one level either side of the gunfight level'),
     (New-BmSetting 'Aggression' 'Combat' 'aggr' 0 2 1 'Aggression' '0 calm, 1 aggressive, 2 brutal (longer chases, wider vision, fewer idle guards)'),
     (New-BmSetting 'BotDamage' 'Combat' 'float' 0.25 4 1 'Bot bullet damage x' 'multiplier for damage done by bots'' bullets'),

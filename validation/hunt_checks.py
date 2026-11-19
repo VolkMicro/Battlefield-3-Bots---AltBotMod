@@ -33,7 +33,7 @@ typedef long LONG;
 #define OFF_SOLDIER_HEALTH 32
 #define OFF_SOLDIER_YAW 36
 enum { TASK_NONE, TASK_FOLLOW, TASK_DEFEND, TASK_SUPPLY, TASK_REPAIR, TASK_REVIVE, TASK_COVER, TASK_ROCKET, TASK_FIGHT };
-typedef struct { int enabled, task, prevTask, targetFlag, enroute, waiting, crouched; unsigned retryAt; char *commander, *prevCommander; } BotBrain;
+typedef struct { int enabled, task, prevTask, targetFlag, enroute, waiting, crouched, step; unsigned retryAt; char *commander, *prevCommander; } BotBrain;
 typedef struct { int mode; float targetYaw, x, z; } BotNav;
 static struct { unsigned frame; int botCount; char *bots[MAX_BOTS]; float botMove[MAX_BOTS][3]; } host, *H = &host;
 static BMConfig g_enhanced;
@@ -57,9 +57,9 @@ static unsigned firedAt[NP]; static int spotted[NP];
 static int g_lastPlanDeferred, plans, planFails, deferPlans, cancels, stands; static float planGoal[MAX_BOTS][3];
 static NavGrid grid, *gridPtr = &grid;
 static char pmBuf[512] __attribute__((aligned(16))); static void *pmArr[NP];
-static int logs;
+static int logs; static char lastChat[256];
 static void bot_log(const char *f, ...) { (void)f; logs++; }
-static void chat_say(const char *f, ...) { (void)f; }
+static void chat_say(const char *f, ...) { va_list a; va_start(a, f); vsnprintf(lastChat, sizeof lastChat, f, a); va_end(a); }
 static int chat_is_admin(const char *who) { return who && !strcmp(who, "admin"); }
 static BotBrain *bot_brain(int i) { return &brains[i]; }
 static BotNav *bot_nav(int i) { return &navs[i]; }
@@ -92,6 +92,26 @@ static int launcher_slot(int i) { return hasLauncher[i] ? 2 : -1; }
 static int fired_within(char *pl, unsigned frames) { int k = idx(pl); return k >= 0 && firedAt[k] && H->frame - firedAt[k] < frames; }
 static int spotted_cached(char *pl) { int k = idx(pl); return k >= 0 && spotted[k]; }
 static float dist2(const float *a, const float *b) { float dx = a[0] - b[0], dz = a[2] - b[2]; return dx * dx + dz * dz; }
+static void *find_player(const char *name) { for (int k = 0; k < NP; k++) if (!strcmp(players[k] + OFF_PLAYER_ONLINE_NAME, name)) return players[k]; return NULL; }
+// snap aim (snap_aim.inc): the input structure, the stick levels, the steering states it stays out of
+#define OFF_SOLDIER_PITCH 40
+#define OFF_INPUT_AIM_VALID 0x1dc
+#define OFF_INPUT_AIM_YAW 0x1f4
+#define OFF_INPUT_AIM_PITCH 0x1f8
+#define EIA_YAW 4
+#define EIA_PITCH 5
+typedef void (*SetLevel_t)(void *input, int action, float level);
+static char inputs[MAX_BOTS][0x400] __attribute__((aligned(16))); static float levels[MAX_BOTS][8];
+static void mock_set_level(void *in, int a, float v) { int i = (int)(((char *)in - inputs[0]) / 0x400); if (a >= 0 && a < 8) levels[i][a] = v; }
+#define ADDR_ENTRYINPUT_SET_LEVEL mock_set_level
+static int air_pilot(int i) { (void)i; return 0; }
+static const BMDifficulty *profiles[MAX_BOTS];
+static const BMDifficulty *bot_profile(int i) { return profiles[i]; }
+static unsigned g_fenceUntil[MAX_BOTS], g_vaultUntil[MAX_BOTS], g_breachUntil[MAX_BOTS];
+static unsigned char g_stairOn[MAX_BOTS], g_swimming[MAX_BOTS];
+static struct { unsigned char climbPhase; } g_paths[MAX_BOTS];
+static float g_aimPitch[MAX_BOTS];
+#include "snap_aim.inc"
 #include "hunt_native.inc"
 
 static float *pos(int k) { return (float *)(soldiers[k][lifeOf[k]] + OFF_SOLDIER_SPAWN_POSITION); }
@@ -134,7 +154,10 @@ int main(void)
     // 1. who is sent: the nearest free bots of the other team, one more per pass, at most 60 % of the team (6 of 10)
     step(10);
     assert(hunters() == 1 && hunt_quarry(10) == players[HUMAN]);
-    step(200);
+    assert(strstr(lastChat, "[AltBotMod] Hunt v2: up to 8 bots hunt each player, difficulty elite, snap aim on (checking)"));
+    lastChat[0] = 0; step(30); assert(!lastChat[0]);   // (once a round)
+    printf("PASS: the chat says once a round, as soon as a player is in, that this build runs and with what (hunt, difficulty, snap aim)\n");
+    step(170);
     assert(hunters() == 6);
     for (int k = 10; k < 16; k++) assert(hunt_quarry(k) == players[HUMAN]);
     for (int k = 0; k < 10; k++) assert(!hunt_quarry(k));
@@ -276,9 +299,76 @@ int main(void)
     step(300); assert(hunters() == 6);
     printf("PASS: Hunt=0 lets every hunter go and sends none; !hunt on / off / <n> for admins only\n");
     // 11. a new round: nobody hunts anybody
-    g_roundEpoch++; step(1);
+    lastChat[0] = 0; g_roundEpoch++; step(1);
     assert(hunters() <= 1 && hunt_target_of(players[HUMAN]) && !hunt_target_of(players[HUMAN])->at);   /* (one sent in its first pass) */
-    printf("PASS: a new round starts afresh: last round's hunters and knowledge dropped\n");
+    assert(strstr(lastChat, "Hunt v2"));
+    printf("PASS: a new round starts afresh: last round's hunters and knowledge dropped, the chat line again\n");
+
+    // 12. the kill feed's tally
+    hunt_note_kill("bot12", "human", 1); hunt_note_kill("bot13", "human", 0); hunt_note_kill("human", "bot14", 0);
+    hunt_note_kill("bot1", "human", 0);   /* (same team: not counted) */
+    hunt_note_kill("human", "human", 0); hunt_note_kill("nobody", "human", 0); hunt_note_kill("", "bot12", 0);
+    assert(g_huntKills[0] == 2 && g_huntKills[1] == 1 && g_huntKills[2] == 1);
+    printf("PASS: the kill feed's tally - players killed by bots (head shots), bots killed by players; team kills, suicides, unknown names left out\n");
+
+    // 13. snap aim
+    const BMDifficulty *NM = bm_difficulty_level(6), *EL = bm_difficulty_level(5);
+    int b = 3; char *sb = sold(b); float *yawp = (float *)(sb + OFF_SOLDIER_YAW), *pitp = (float *)(sb + OFF_SOLDIER_PITCH);
+    int *valid = (int *)(inputs[b] + OFF_INPUT_AIM_VALID); float *aimY = (float *)(inputs[b] + OFF_INPUT_AIM_YAW), *aimP = (float *)(inputs[b] + OFF_INPUT_AIM_PITCH);
+    g_enhanced.snapAim = 1; g_enhanced.snapAimDegrees = 720; profiles[b] = NM; brains[b].task = TASK_FIGHT; brains[b].enabled = 1;
+    *yawp = -0.1f; *pitp = 0; navs[b].targetYaw = 0.2f; g_aimPitch[b] = 0.1f;   /* facing just one side of north, the target just the other */
+    levels[b][EIA_YAW] = 0.7f; levels[b][EIA_PITCH] = 0.3f;
+    H->frame++; snap_aim_apply(b, inputs[b]);
+    assert(*valid == 1 && levels[b][EIA_YAW] == 0 && levels[b][EIA_PITCH] == 0);
+    assert(fabsf(snap_wrappi(*aimY - (6.2831853f - 0.2f))) < 1e-4f && fabsf(*aimP - 0.1f) < 1e-4f);
+    printf("PASS: snap aim - a nightmare bot in a fight aims through the aim fields (aim yaw = -soldier yaw), across north the short way (0.3 rad, the stick: 6), the stick at rest\n");
+    navs[b].targetYaw = 0.2f + 3.14159265f; float before = *aimY; H->frame++; snap_aim_apply(b, inputs[b]);
+    assert(fabsf(fabsf(snap_wrappi(*aimY - before)) - 720 * 0.01745329f / 30) < 1e-4f);
+    printf("PASS: snap aim swings at SnapAimDegreesPerSecond at most (720: 0.42 rad a frame)\n");
+    brains[b].task = TASK_NONE; H->frame++; snap_aim_apply(b, inputs[b]); assert(*valid == 0 && !g_snapOn[b]);
+    *valid = 7; H->frame++; snap_aim_apply(b, inputs[b]); assert(*valid == 7);   /* (let go once: the fields are not its any more) */
+    brains[b].task = TASK_FIGHT; profiles[b] = EL; *valid = 0; H->frame++; snap_aim_apply(b, inputs[b]); assert(*valid == 0);
+    g_enhanced.snapAim = 2; H->frame++; snap_aim_apply(b, inputs[b]); assert(*valid == 1);
+    g_fenceUntil[b] = H->frame + 30; H->frame++; snap_aim_apply(b, inputs[b]); assert(*valid == 0); g_fenceUntil[b] = 0;
+    g_paths[b].climbPhase = 1; H->frame++; snap_aim_apply(b, inputs[b]); assert(*valid == 0); g_paths[b].climbPhase = 0;
+    g_enhanced.snapAim = 0; H->frame++; snap_aim_apply(b, inputs[b]); assert(*valid == 0);
+    printf("PASS: snap aim lets the fields go when the fight ends (once); SnapAim=1 nightmare only, 2 every level, 0 off; not on a fence, a ladder, stairs...\n");
+    // the self-check: the engine follows / follows with the other sign / ignores it
+    g_enhanced.snapAim = 1; profiles[b] = NM;
+    for (int mode = 0; mode < 3; mode++) {
+        g_snapState = 0; g_snapSign = 1; g_snapSamples = g_snapFollow = g_snapOther = g_snapFlips = 0; g_snapOn[b] = 0;
+        *yawp = -1.0f;   /* (aims swept between 1.0 and 2.4 rad: never near 0 or pi, where both signs read the same) */
+        for (int f = 0; f < 400 && (g_snapState == 0); f++) {
+            navs[b].targetYaw = -(1.0f + 0.7f + 0.7f * sinf(f * 0.15f));
+            H->frame++; snap_aim_apply(b, inputs[b]);
+            if (!*valid) break;
+            if (mode == 0) *yawp = -*aimY;                               /* follows: soldier yaw = -aim */
+            else if (mode == 1) *yawp = *aimY - 6.2831853f;              /* the other sign, kept in (-2pi, 0] */
+        }
+        if (mode == 0) assert(g_snapState == 1 && g_snapSign == 1);
+        if (mode == 1) assert(g_snapState == 1 && g_snapSign == -1 && g_snapFlips == 1);
+        if (mode == 2) assert(g_snapState == -1 && !g_snapOn[b] && *valid == 0);
+    }
+    assert(!strcmp(snap_short(), "OFF (engine ignored it)"));
+    H->frame++; snap_aim_apply(b, inputs[b]); assert(*valid == 0);   /* off for the session */
+    snap_aim_command("admin", "1"); assert(g_snapState == 0 && g_enhanced.snapAim == 1);   /* an admin can ask for another check */
+    printf("PASS: snap aim's self-check - the soldiers follow: on; they follow the other sign: turned round and on; they ignore it: off for the session, the stick as before\n");
+    // the pitch check: the soldiers' pitch follows the aim pitch / mirrors it (then the sign turns round); never while firing
+    for (int mode = 0; mode < 2; mode++) {
+        g_snapState = 1; g_snapPitchState = 0; g_snapPitchSign = 1; g_snapPSamples = g_snapPFollow = g_snapPMirror = 0; g_snapOn[b] = 0;
+        brains[b].step = 1; *pitp = 0; g_aimPitch[b] = 0.3f;
+        for (int f = 0; f < 200 && !g_snapPitchState; f++) {
+            H->frame++; snap_aim_apply(b, inputs[b]);
+            *pitp = mode == 0 ? *aimP : -*aimP; *yawp = -*aimY;
+        }
+        if (mode == 0) assert(g_snapPitchState == 1 && g_snapPitchSign == 1 && g_snapPFollow >= 9);
+        if (mode == 1) assert(g_snapPitchState == 1 && g_snapPitchSign == -1 && g_snapPFollow >= 9 && *aimP < -0.25f);   /* (the field now carries -0.3 for +0.3) */
+    }
+    g_snapPitchState = 0; g_snapPSamples = 0; brains[b].step = 2; g_snapOn[b] = 0;
+    for (int f = 0; f < 60; f++) { H->frame++; snap_aim_apply(b, inputs[b]); *pitp = 1.0f; }
+    assert(g_snapPSamples == 0);   /* (bursts: the recoil lifts the pitch - no samples) */
+    g_snapPitchSign = 1; g_snapPitchState = 1;
+    printf("PASS: snap aim's pitch check - followed: kept; mirrored: the sign turned round (the shots would have gone into the sky); no samples while firing\n");
     return 0;
 }
 '''

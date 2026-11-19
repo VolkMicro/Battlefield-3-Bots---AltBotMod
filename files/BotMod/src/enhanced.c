@@ -51,6 +51,7 @@ void bm_defaults(BMConfig *c)
     c->routeActions = 1; c->reconBeacons = 1;   // AltBotMod V15
     c->hunt = 1; c->huntersPerPlayer = 8; c->huntIntelSeconds = 6; c->huntIntelMeters = 12; c->huntMaxMeters = 700;   // AltBotMod Hunt
     c->hearMeters = 120;
+    c->snapAim = 1; c->snapAimDegrees = 720;   // AltBotMod Hunt v2
     bm_air_defaults(&c->air);
 }
 int bm_set(BMConfig *c, const char *key, const char *value)
@@ -94,6 +95,7 @@ int bm_set(BMConfig *c, const char *key, const char *value)
         BOOL_KEY("Hunt", hunt), INT_KEY("HuntersPerPlayer", huntersPerPlayer, 0, 32),   // AltBotMod Hunt
         FLOAT_KEY("HuntIntelSeconds", huntIntelSeconds, 0, 60), FLOAT_KEY("HuntIntelMeters", huntIntelMeters, 0, 100),
         FLOAT_KEY("HuntMaxMeters", huntMaxMeters, 50, 3000), FLOAT_KEY("HearMeters", hearMeters, 0, 400),
+        INT_KEY("SnapAim", snapAim, 0, 2), FLOAT_KEY("SnapAimDegreesPerSecond", snapAimDegrees, 90, 3600),   // AltBotMod Hunt v2
         BOOL_KEY("RouteActions", routeActions), BOOL_KEY("ReconBeacons", reconBeacons),   // AltBotMod V15
         FLOAT_KEY("InfantryReactionSeconds", reactionSeconds, 0.1f, 2),
         FLOAT_KEY("InfantryAimMarginMeters", infantryAimMargin, 0.08f, 0.5f),

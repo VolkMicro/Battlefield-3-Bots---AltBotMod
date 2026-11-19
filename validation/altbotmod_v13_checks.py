@@ -166,6 +166,7 @@ static NavGrid *g_grid; static NavGrid **nav_slot(void){return &g_grid;}
 static struct{char k[40],v[40],w[64];int hs;} g_q[16]; static int g_qn,g_qr;
 int chat_poll_kill(char *k,int kl,char *v,int vl,char *w,int wl,int *hs){if(g_qr>=g_qn)return 0;snprintf(k,kl,"%s",g_q[g_qr].k);snprintf(v,vl,"%s",g_q[g_qr].v);snprintf(w,wl,"%s",g_q[g_qr].w);*hs=g_q[g_qr].hs;g_qr++;return 1;}
 static void queue_kill(const char *k,const char *v,const char *w,int hs){snprintf(g_q[g_qn].k,40,"%s",k);snprintf(g_q[g_qn].v,40,"%s",v);snprintf(g_q[g_qn].w,64,"%s",w);g_q[g_qn].hs=hs;g_qn++;}
+static int g_huntNotes; static void hunt_note_kill(const char *k,const char *v,int hs){(void)k;(void)v;(void)hs;g_huntNotes++;}   /* AltBotMod Hunt v2: the kill tally (hunt_checks.py) */
 #include "livemap_native.inc"
 
 static char *new_player(const char *name,int team,float x,float y,float z){
@@ -220,6 +221,7 @@ int main(int argc,char **argv){
  assert(strstr(t,"\tAltBot02Engineer\t1\t2\t500.0\t600.0\tTestPlayer\t0\t1\t120.0\t160.0\tM1A2\t0\t"));
  assert(strstr(t,"\t-\t0\t0\t100.0\t150.0\tAltBot01Assault\t1\t1\t100.0\t150.0\tDamageArea\t0\t0\r\n"));
  assert(count(t,"kill\t")==3&&!strstr(t,"Ghost"));free(t);
+ assert(g_huntNotes==4);   // (AltBotMod Hunt v2: every kill of the feed reaches the tally, even the unknown one)
  puts("PASS: kills - killer and victim with bot / team / position, weapon, head shot, distance; the victim where it was last alive (not where the body flew), the world's kills at the victim, players never seen left out");
  // stuck: the tank's own watchdog, twice at the same spot (one event), then the no-progress watch on bot 0
  livemap_stuck(1,g_vehPos,"vehicle");livemap_stuck(1,g_vehPos,"vehicle");
@@ -235,7 +237,7 @@ int main(int argc,char **argv){
  t=slurp("events_25300.txt");assert(count(t,"round\t")==2&&g_lmRound>=first);free(t);
  // switched off: an "off" picture, the kill queue drained and nothing written; on again: a fresh picture
  g_enhanced.liveMap=0;queue_kill("TestPlayer","AltBot01Assault","M16A4",0);step(60);
- t=slurp("live_25300.txt");assert(strstr(t,"\r\noff\r\nend\r\n"));free(t);assert(g_qr==g_qn);
+ t=slurp("live_25300.txt");assert(strstr(t,"\r\noff\r\nend\r\n"));free(t);assert(g_qr==g_qn && g_huntNotes==5);   // (Hunt v2: drained kills are tallied too)
  char *ev=slurp("events_25300.txt");int killsBefore=count(ev,"kill\t");free(ev);
  g_enhanced.liveMap=1;step(31);t=slurp("live_25300.txt");assert(!strstr(t,"\r\noff\r\n")&&strstr(t,"\r\np\tTestPlayer"));free(t);
  ev=slurp("events_25300.txt");assert(count(ev,"kill\t")==killsBefore);free(ev);

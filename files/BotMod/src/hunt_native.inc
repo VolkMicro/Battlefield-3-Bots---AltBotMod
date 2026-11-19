@@ -103,6 +103,23 @@ static const char *hunt_unfit(int i, int held)
     return NULL;
 }
 
+// AltBotMod Hunt v2: the kill feed's tally (livemap_kill / its drain): players killed by bots (and how many of those were
+// head shots), bots killed by players - the log's minute line puts it next to the hunt and the snap aim.
+static unsigned g_huntKills[3];
+static void hunt_note_kill(const char *killer, const char *victim, int headshot)
+{
+    if (!killer || !victim || !killer[0] || !victim[0] || !strcmp(killer, victim)) return;
+    char *kp = find_player(killer), *vp = find_player(victim);
+    if (!kp || !vp || player_team(kp) == player_team(vp)) return;
+    int kb = is_bot(kp), vb = is_bot(vp);
+    if (kb && !vb) { g_huntKills[0]++; if (headshot) g_huntKills[1]++; }
+    else if (!kb && vb) g_huntKills[2]++;
+}
+static const char *snap_short(void)
+{
+    return g_enhanced.snapAim <= 0 ? "off" : g_snapState < 0 ? "OFF (engine ignored it)" : g_snapState ? "on" : "on (checking)";
+}
+
 static void hunt_release_all(const char *why)
 {
     for (int i = 0; i < H->botCount; i++) if (g_hunterOf[i]) hunt_release(i, why);
@@ -136,6 +153,41 @@ static void hunt_director_tick(void)
     }
     if (!level_ready() || (at && H->frame - at < 10)) return;
     at = H->frame ? H->frame : 1;
+    {   // AltBotMod Hunt v2: once a minute, how the fights go - bots against players, the hunt, the snap aim
+        static unsigned sumAt, last[3], lastSnap, lastSent;
+        if (!sumAt) sumAt = H->frame;
+        if (H->frame - sumAt >= 60 * 30) {
+            sumAt = H->frame;
+            unsigned d[3] = {g_huntKills[0] - last[0], g_huntKills[1] - last[1], g_huntKills[2] - last[2]};
+            unsigned ds = g_snapFrames - lastSnap, dh = g_huntAssigned - lastSent;
+            int n = 0;
+            for (int i = 0; i < H->botCount; i++) if (hunt_quarry(i)) n++;
+            if (d[0] || d[2] || ds || dh || n)
+                bot_log("hunt: last minute - bots killed players %u time(s) (%u head shots), players killed bots %u time(s); %d hunting, %u sent; "
+                        "snap aim %s, %u aimed frames", d[0], d[1], d[2], n, dh, snap_short(), ds);
+            memcpy(last, g_huntKills, sizeof last); lastSnap = g_snapFrames; lastSent = g_huntAssigned;
+        }
+    }
+    {   // AltBotMod Hunt v2: once a round, as soon as a player is in, say in the chat what this build does (and that it is
+        // the one running: "still the same bots" with no such line means the old core is still loaded)
+        static LONG announced = -1;
+        char *pm0 = player_manager(); void **a0 = NULL; unsigned c0 = 0;
+        if (announced != g_roundEpoch && pm0) {
+            memcpy(&a0, pm0 + 0xac, sizeof a0); memcpy(&c0, pm0 + 8, sizeof c0);
+            for (unsigned k = 0; a0 && k < c0 && k < 64; k++) {
+                char *pl = a0[k], *s = pl && !is_bot(pl) ? *(char **)(pl + OFF_PLAYER_SOLDIER) : NULL;
+                if (!s || !(*(float *)(s + OFF_SOLDIER_HEALTH) > 0)) continue;
+                announced = g_roundEpoch;
+                if (g_enhanced.hunt && g_enhanced.huntersPerPlayer > 0)
+                    chat_say("[AltBotMod] Hunt v2: up to %d bots hunt each player, difficulty %s, snap aim %s", g_enhanced.huntersPerPlayer,
+                             bm_difficulty_name(g_enhanced.difficulty), snap_short());
+                else chat_say("[AltBotMod] Hunt v2: hunting off, difficulty %s, snap aim %s", bm_difficulty_name(g_enhanced.difficulty), snap_short());
+                bot_log("hunt: announced in the chat - hunt %s (%d per player), difficulty %s, snap aim %s", g_enhanced.hunt ? "on" : "off",
+                        g_enhanced.huntersPerPlayer, bm_difficulty_name(g_enhanced.difficulty), snap_state_text());
+                break;
+            }
+        }
+    }
     if (!g_enhanced.hunt || g_enhanced.huntersPerPlayer <= 0) {
         if (wasOn) { hunt_release_all("hunting switched off"); wasOn = 0; bot_log("hunt: off - the bots play the objectives only"); }
         return;
@@ -301,6 +353,7 @@ static void hunt_status(void)
             "not from further than %.0f m; gunfire heard all round within %.0f m; %d hunting now - %u sent, %u let go, %u routes, %u exact / %u rough fixes",
             g_enhanced.hunt ? "on" : "off", g_enhanced.huntersPerPlayer, g_enhanced.huntIntelSeconds, g_enhanced.huntIntelMeters, g_enhanced.huntMaxMeters,
             g_enhanced.hearMeters, n, g_huntAssigned, g_huntReleased, g_huntPlans, g_huntExact, g_huntRough);
+    bot_log("hunt: so far bots killed players %u time(s) (%u head shots), players killed bots %u time(s)", g_huntKills[0], g_huntKills[1], g_huntKills[2]);
 }
 // Chat (!hunt) and console (hunt): status; admins switch it - on / off / a number of hunters per human. Until a restart
 // or "!botconfig reload": Hunt= and HuntersPerPlayer= in enhanced.ini keep it.

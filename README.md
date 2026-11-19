@@ -20,6 +20,12 @@ Earlier releases: Release 1.1 fixed server lag and idle boats on maps with boats
 
 On top of Release 1.2 this build makes the bots come for the human players and fight like they mean it. Details and settings: [Hunt and nightmare](#hunt-and-nightmare).
 
+**v2:**
+- **Snap aim** (`SnapAim=1`). In a fight a nightmare bot aims the way a player's client does, through the input's aim fields, which this mod already uses for the M-COM key and for pilots. Before, it turned with the yaw stick at a fixed rate, and the game never turns a bot past heading 0 one way: an enemy just across north cost a turn the long way round, up to 350 degrees. Now the aim swings straight at the target at up to `SnapAimDegreesPerSecond` (720). The first fights check that the game follows it; if not, it switches itself off (log: `snapaim: OFF`) and the bots turn as before. In game: `!snapaim`, admins `!snapaim 0/1/2` (off / nightmare / every level).
+- **nightmare is switched on.** The installer moves `Difficulty=elite`, the old default, to `nightmare`; before, an existing `enhanced.ini` kept elite and none of the nightmare rules ran.
+- **The chat says it runs.** Once a round: `[AltBotMod] Hunt v2: up to 8 bots hunt each player, difficulty nightmare, snap aim on`. No such line: the old core is still loaded (restart the server after installing).
+- **A minute line in the log:** players killed by bots (head shots), bots killed by players, hunters, snap-aimed frames.
+
 - **Bots hunt the human players** (`Hunt=1`). For every human on foot up to `HuntersPerPlayer` (8) bots of the other team, the nearest free ones, go after it: one straight in, the others round its left, its right and from behind, so it is caught from several sides. The rest of the team plays the objectives (at most 60% of a team hunts).
 - **New gunfight level `nightmare`.** Elite's aim with no let-up: never runs for cover from an enemy within 40 m, closes in on every fight and chases a target that ducked away for 20 s, rounding the corner with its rifle up; quick, irregular side steps close in; looks round every 0.3 s.
 - **Hearing** (`HearMeters=120`): gunfire is heard whichever way a bot faces; it turns on a shooter it can see.
@@ -342,6 +348,8 @@ Settings are in `enhanced.ini`, section `[AltBotMod]`. They are also editable in
 | `HuntIntelMeters` | 12 | How far off that rough fix is. |
 | `HuntMaxMeters` | 700 | A bot further than this from the player is not sent after it. |
 | `HearMeters` | 120 | Gunfire this close is heard all round. 0 = off. |
+| `SnapAim` | 1 | Aim in a fight through the aim fields: 0 off, 1 nightmare bots, 2 every level. |
+| `SnapAimDegreesPerSecond` | 720 | How fast that aim swings at most. |
 
 ### Hunt and nightmare
 

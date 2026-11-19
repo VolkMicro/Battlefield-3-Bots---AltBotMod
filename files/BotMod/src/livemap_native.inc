@@ -125,6 +125,7 @@ static void lm_route(int i, char *out, int n)
 // player.onKill from RCON (chat_poll_kill): one "kill" line with both positions.
 static void livemap_kill(const char *killer, const char *victim, const char *weapon, int headshot)
 {
+    hunt_note_kill(killer, victim, headshot);   // AltBotMod Hunt v2: who kills whom, bots against players
     char kn[40], vn[40], wn[64];
     lm_clean(kn, sizeof kn, killer); lm_clean(vn, sizeof vn, victim); lm_clean(wn, sizeof wn, weapon);
     char *kp = killer && killer[0] ? find_player(killer) : NULL, *vp = victim && victim[0] ? find_player(victim) : NULL;
@@ -222,7 +223,7 @@ static void livemap_tick(void)
 {
     char k[40], v[40], w[64]; int hs;
     if (!g_enhanced.liveMap) {
-        while (chat_poll_kill(k, sizeof k, v, sizeof v, w, sizeof w, &hs)) { }   // (nothing stale when switched back on)
+        while (chat_poll_kill(k, sizeof k, v, sizeof v, w, sizeof w, &hs)) hunt_note_kill(k, v, hs);   // (nothing stale when switched back on; Hunt v2: the tally)
         if (g_lmOn) {   // just switched off: say so in the picture, close the events file
             g_lmOn = 0;
             char path[MAX_PATH + 80], name[48];

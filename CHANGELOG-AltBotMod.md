@@ -16,6 +16,23 @@ The installer keeps your settings and adds the new ones (V31: `LockOnSeconds` an
 
 **Going back:** download an earlier release from the GitHub Releases page and install it, or copy its `files\server\BotModCore.dll` over `BotModCore.dll` in the server folder.
 
+## Hunt v2 (2026-11-19)
+
+The first Hunt build changed nothing a player could see: the installer kept `Difficulty=elite` from an existing `enhanced.ini`, so no nightmare rule ran, and the bots still turned and aimed as before.
+
+**Snap aim** (`SnapAim=1`, `SnapAimDegreesPerSecond=720`, new file `snap_aim.inc`).
+- In a fight a nightmare bot aims through the input's aim fields (`OFF_INPUT_AIM_*`), as a player's client does and as this mod already does for the M-COM key (the game arms only with the recorded aim, and it does) and for pilots. Before, it turned with the yaw / pitch stick: a fixed rate, and never past heading 0 one way (the engine keeps the heading in (-2pi, 0] and stops a raise at 0), so an enemy just across north cost a turn the long way round, up to 350 degrees.
+- The aim swings to the fight's target (its lead point, a chase, a grenade throw) and the fight's pitch, with its learned corrections, at 720 degrees a second at most; the stick rests meanwhile, as at the M-COM; the fields are let go when the fight ends. Not on a fence, a vault, stairs, a ladder, a breach, a fall, a swim or at the M-COM key.
+- Conventions taken from the working code: aim yaw = atan2(-dx, dz) = -(soldier yaw); aim pitch = soldier pitch.
+- Self-check: 24 aimed frames that needed a turn compare the soldier's own yaw with the aims of 1-6 frames before. It follows: on. It follows with the other sign: turned round, checked again. Neither: off for the session, the stick as before, and the log says what it saw (`snapaim: OFF ...`). The pitch is checked the same way (12 frames, never while firing): a mirrored pitch, which would send every burst into the sky, turns its sign round; this check never switches snap aim off.
+- `!snapaim`, admins `!snapaim 0/1/2`; console `snapaim`. 2 = every level.
+
+**nightmare switched on.** The installer moves `Difficulty=elite` (the old default) to `nightmare`, as it moved `JetAreaMarginMeters`.
+
+**Visible.** Once a round, when a player is in: `[AltBotMod] Hunt v2: up to 8 bots hunt each player, difficulty nightmare, snap aim on`. A minute line in the log: players killed by bots (head shots), bots killed by players, hunters, snap-aimed frames.
+
+Checks: `hunt_checks.py` adds snap aim (the short way across north, the turn rate, letting go, levels, the self-check's three outcomes, the pitch check), the kill tally and the chat line; `altbotmod_v13_checks` sees every kill of the feed reach the tally; the installer test moves elite to nightmare (175 checks); `test4` keeps every new per-bot table compacted with the roster.
+
 ## Hunt (on top of Release 1.2, 2026-11-18)
 
 The bots come for the human players and fight like they mean it. Built and checked offline (the release checks, sanitizers, a new `hunt_checks.py`); not yet played in a live round.

@@ -178,6 +178,8 @@ static char *hunt_quarry(int i);
 static void hunt_saw(char *pl, const float *pos);
 static void hunt_status(void);
 static void hunt_command(const char *who, const char *arg);
+static void hunt_note_kill(const char *killer, const char *victim, int headshot);   // AltBotMod Hunt v2: the kill feed's tally
+static void snap_aim_command(const char *who, const char *arg);
 static int fired_within(char *pl, unsigned frames);
 static void fleet_air_dispatch(void);
 static void fleet_abandoned_dispatch(void);
@@ -9285,6 +9287,8 @@ __declspec(dllexport) void botmod_command(char *line)
         difficulty_status();
     } else if (!strncmp(line, "hunt", 4) && (!line[4] || line[4] == ' ')) {   // AltBotMod Hunt: hunt [on|off|<bots per player>]
         hunt_command(NULL, line[4] ? line + 5 : "");
+    } else if (!strncmp(line, "snapaim", 7) && (!line[7] || line[7] == ' ')) {   // AltBotMod Hunt v2: snapaim [0|1|2]
+        snap_aim_command(NULL, line[7] ? line + 8 : "");
     } else if (!strncmp(line, "botcount ", 9)) {
         int n = atoi(line + 9);
         *wanted_bots() = n < 0 ? 0 : n > MAX_BOTS ? MAX_BOTS : n;
@@ -9859,6 +9863,7 @@ static void chat_command(const char *who, const char *text)
         return;
     }
     if (!_stricmp(cmd, "hunt")) { hunt_command(who, arg); return; }   // AltBotMod Hunt: !hunt [on|off|<bots per player>]
+    if (!_stricmp(cmd, "snapaim")) { snap_aim_command(who, arg); return; }   // AltBotMod Hunt v2: !snapaim [0|1|2]
     if (squad_order_chat(who, cmd, arg)) return;   // AltBotMod V34: !attack / !defend / !orders
     if (!_stricmp(cmd, "help")) {
         chat_say("[AltBotMod] !bots = status | admins: !bots <0-%d> or !bots fill = bot count, !bots off / on = pause / resume, !map <name>, !pos", MAX_BOTS);
@@ -12548,6 +12553,7 @@ static int boat_lane_to(int f, const float *from);   // AltBotMod V22 (trace_nat
 #include "abandoned_dispatch.inc"
 #include "modes_native.inc"
 #include "director_native.inc"
+#include "snap_aim.inc"      // AltBotMod Hunt v2: aiming through the input's aim fields in a fight
 #include "hunt_native.inc"   // AltBotMod Hunt
 #include "trace_native.inc"
 #include "route_actions_native.inc"   // AltBotMod V15
@@ -12629,6 +12635,7 @@ static void enhanced_status(void)
             g_enhanced.reactionSeconds,g_enhanced.weaponVariety,g_enhanced.weaponAttachments,variants);
     difficulty_status();
     hunt_status();   // AltBotMod Hunt
+    snap_aim_command(NULL, "");   // AltBotMod Hunt v2: snap aim's state
     air_status();
     fleet_status();
     bot_log("enhanced: staged-driving=%d transport-landings=%d deployment-learning=%d weapon-handling=%d armor-tactics=%d infantry-support=%d traffic=%d diagnostics=%d",
@@ -12735,6 +12742,7 @@ static void enhanced_forget(int i)
     FORGET(g_director.unit);FORGET(g_directorIdentity);g_directorAt=0;
     FORGET(g_hunterOf);FORGET(g_hunterSoldier);FORGET(g_hunterRole);FORGET(g_huntDriving);FORGET(g_huntPhase);FORGET(g_huntPending);   // AltBotMod Hunt
     FORGET(g_huntFails);FORGET(g_huntAngle);FORGET(g_huntGoal);FORGET(g_huntPlanAt);FORGET(g_huntScanAt);FORGET(g_huntCooldown);FORGET(g_huntRoutedAt);
+    FORGET(g_snapOn);FORGET(g_snapYaw);FORGET(g_snapPitch);FORGET(g_snapStart);FORGET(g_snapHist);FORGET(g_snapPHist);FORGET(g_snapSince);   // AltBotMod Hunt v2
     FORGET(g_gliding);
     FORGET(g_grenadesThisLife);
     FORGET(g_gunAimH);
@@ -13134,6 +13142,7 @@ __declspec(dllexport) void botmod_tick(void)
                 g_pitchPrevV[i] = cur; g_pitchPrevL[i] = lvl; g_pitchPrevAt[i] = H->frame;
             }
         }
+        snap_aim_apply(i, in);   // AltBotMod Hunt v2: a fighting bot aims through the aim fields (the stick at rest)
         air_apply(i, in); // last control writer BEFORE native vehicle EntryUpdate
         if (g_vehInput) {   // in a seat: nobody feeds a bot's input to the vehicle (humans' arrives from their client) - do it
             char *pl = H->bots[i], *veh = player_vehicle(pl);
