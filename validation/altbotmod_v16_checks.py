@@ -433,7 +433,7 @@ int main(void)
     assert 'patch_vslot(ADDR_VEHICLE_VTABLE + 0x110, ADDR_VEHICLE_ON_DAMAGE, (void *)hook_vehicle_on_damage, "ServerVehicleEntity::onDamage");' in core
     assert '#define ADDR_VEHICLE_ON_DAMAGE' in core and '0x00df9020' in core.split('#define ADDR_VEHICLE_ON_DAMAGE')[1].split('\n')[0]
     assert 'float factor = g_enhanced.vehicleDamageTaken * giver_vehicle_factor(a2)' in core.split('hook_vehicle_on_damage(void *veh')[1][:600]
-    assert 'if (rush_operator_holding(i))' in core and 'RUSH_ARM_REACH' in mn and '#define RUSH_HOLD_FRAMES (8 * 30)' in (SRC / 'rush_policy.h').read_text()
+    assert 'if (rush_operator_holding(i) && b->task != TASK_FIGHT) {' in core and 'RUSH_ARM_REACH' in mn and '#define RUSH_HOLD_FRAMES (8 * 30)' in (SRC / 'rush_policy.h').read_text()   # (Hunt merge: arming is interruptible by a confirmed infantry sighting)
     for key in ('GadgetVariety', 'C4Attacks', 'LockOnLaunchers', 'BotTicketCost', 'VehicleCountermeasures'):
         assert '"%s"' % key in ec, key
     assert 'place_class_gadget(i, soldier);' in (SRC / 'sniper_native.inc').read_text()

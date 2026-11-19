@@ -1,8 +1,43 @@
+# AltBotMod custom follow-up build (November 2026)
+
+## V39 - human style
+- New `HumanStyle=1` (default): bots that fight like people - an aim error on infantry and vehicle guns, motion taken in late, only part of the recoil held down, 0.25 s reaction + first-shot delay, 160 degree view, 70 m / 150 m (snipers) fight ranges with 150 m shoot-back, random 0.8 - 1.6 x burst rhythm, no hops in a fight, about half the bots crouch to shoot. (The aim model itself was rewritten in Hunt v4, below.)
+- `SideSteps=3`: step and shoot (1 s sideways every 2.5 s). Server Control accepts it and lists the new settings.
+- New defaults: InfantryEngageMeters 70, ReconEngageMeters / SniperEngageMeters 150, ArmorEngageMeters 375, ArmorInfantryMeters 150, InfantryReactionSeconds 0.25, BotDamage 1.0, Aggression 1, Difficulty normal. `HumanStyle=0` restores the V38 gunfight (set the old values back in enhanced.ini as well).
+- Emergency close-threat scan 15 m (was 70 m) and all-round hearing 8 m (was 45 m) with HumanStyle on.
+- Details, settings and rebuild steps: BOT-AIM-STYLE-V39.txt. New check: validation/altbotmod_human_style_checks.py.
+
+## V36 – Improved infantry and vehicle accuracy
+- Infantry firing alignment is 28% tighter than the previous build, while preserving the existing human-like reaction time and difficulty-specific caps.
+- Ground-vehicle, boat and vehicle-seat gunners use a tighter shot-alignment window (1.25 m on vehicle targets, 0.22 m on infantry targets); coaxial and aircraft door-gunner windows are tightened too.
+- Helicopter pilot gun alignment is tightened from 6/12 m to 4/8 m; jet dogfight and ground-strafe firing windows are narrowed for more accurate passes.
+- These are firing/aim-alignment gates, not guarantees of hit probability: Battlefield weapon spread, recoil, projectile travel and target movement still apply.
+
+
+- Standard infantry profiles detect to 350 m and begin engagements at 300 m; the configured active-fight range is also 300 m, with weapon-family effective range still respected.
+- A confirmed, unobstructed infantry sighting now interrupts every non-combat task (including supply, revive, repair, cover and rocket tasks). Objective capture/navigation is resumed by the normal objective planner after combat ends.
+- Relaxed the long-range centre-mass firing gate by 2.5x (still bounded by each difficulty's aim tolerance) after tracing the close-only firing symptom to an aim window that was too narrow for the native turn-rate. The same correction applies with difficulty profiles disabled.
+- Direct visual contact bypasses the Rush M-COM focus exception, including an active arm/defuse interaction, so bots do not ignore a visible infantry threat while working an objective.
+- Visual detection now checks five times per second instead of twice, in addition to the existing ~0.23 s reaction/aim-settle profile.
+- Damage retaliation still overrides non-combat priorities and pursues a known infantry attacker after temporary loss of sight.
+- Bots now leave all usable vehicles and aircraft unclaimed for the first 90 seconds after the level becomes ready, giving a human player time to finish loading and choose a vehicle. This also blocks spawn-screen vehicle picks, aircraft deployment, passenger-seat assignments, abandoned-vehicle dispatch and empty-driver-seat takeovers during the head-start; bots continue fighting and capturing on foot.
+- This is source-only: rebuild both DLLs with `files\BotMod\build.bat` on the supported 32-bit MinGW setup.
+
 # AltBotMod changelog
 
 Public releases: **Release 1.2** = internal V35.2, **Release 1.1** = internal V35.1, **Release V1** = internal V34. Older entries are the internal development history.
 
 This is a native bot mod for the Battlefield 3 dedicated server: no Venice Unleashed, and clients need nothing extra. It works with the ALP, bf4play and BF-Portable builds of `bf3_server_Final.exe`; the installer checks for that file.
+
+## Custom combat tuning (November 2026)
+
+This copy includes user-requested combat changes; it is not an upstream AltBotMod release:
+- All five infantry difficulty profiles detect infantry to 350 m and begin engagements at 300 m. The configured fight range is also 300 m, while weapon-family maximum range and range factors still keep PDWs and shotguns within their practical reach.
+- Reaction plus aim-settle delay is seven 30-Hz frames (about 0.23 s) at every difficulty. The elite profile no longer uses its original 0.05 s snap reaction.
+- Direct visual contact interrupts non-combat tasks and takes priority over the Rush M-COM focus exception. Detection checks run five times per second.
+- Bots leave vehicles alone for the first 90 seconds after level readiness so a human can join and select a vehicle before the bot fleet dispatch begins. This covers ground vehicles, aircraft, vehicle spawn selections and passenger seats.
+- The long-range centre-mass firing window is 2.5 times wider than the previous overly strict threshold, while remaining capped by each difficulty's aim tolerance. The same correction applies when difficulty profiles are disabled.
+- The default infantry range and reaction settings in `enhanced.ini` / `enhanced.c` match the custom profile. This source ZIP does not contain newly compiled Windows DLLs; rebuild with `files\BotMod\build.bat` on the supported 32-bit MinGW setup.
 
 ## Install (any PC)
 
@@ -15,6 +50,22 @@ The installer keeps your settings and adds the new ones (V31: `LockOnSeconds` an
 **Checking that it loaded:** the log `BotMod_<port>.log` shows `enhanced: AltBotMod V35.2 - New Ground`.
 
 **Going back:** download an earlier release from the GitHub Releases page and install it, or copy its `files\server\BotModCore.dll` over `BotModCore.dll` in the server folder.
+
+## Hunt v4 (2026-11-19): Mr.Cat's V36-V39 with the Hunt
+
+Mr.Cat's V36-V39 (above) are the base; the Hunt v1-v3 go on top. Where they meet:
+
+- **Our own aim model.** The human style's aim error is a new model (`bm_haim_*` in enhanced.c): a slow sway around the target, the miss of the swing onto a new target (it settles in 0.15-0.35 s), the jolt of a hit; its size is part a fixed miss in metres and part a fixed angle (15 cm at 25 m, 35 cm at 100 m for 6 mrad). Leading, the bot takes in its target's motion a reaction time late (0.1-0.25 s). The settings are `HumanStyle` and `Human*` (V39 named them differently; an existing enhanced.ini gets the new lines with their defaults).
+- **The human profile and the Hunt.** With `HumanStyle=1` every level plays the human profile; while `Hunt=1` it also pushes (closes in, keeps the fight while the target is in sight), chases 20 s and does not run for cover from an enemy within 40 m (`bm_human_style_apply`). `nightmare` keeps its own edge there: quick, irregular side steps within 20 m and a look round every 0.2 s.
+- **Retaliation and cover.** Mr.Cat's V36 retaliation (a bot that is hit pursues the shooter for 90 s) replaces the Hunt's out-of-reach cover rule in `cover_react`; the Hunt's "stands its ground close in" still applies to reloading and hurt bots.
+- **Looking round.** Every 0.2 s (Mr.Cat's V36 rate) unless a profile sets its own (`detect_period`).
+- **Aim.** Snap aim follows the fight's own aim point, so the human aim error and the late lead stay in it. The partial recoil control scales the climb each gun's model has learned; the learner measures the gun against the look line, so it does not undo the partial control.
+- **Pauses.** The human burst rhythm (0.8-1.6x) applies first, then v3's settle pause at range raises it to the gun's own settle time where it is shorter.
+- **nightmare (HumanStyle=0):** engages and detects as Mr.Cat's V38 elite (400 / 500 m) and holds a fight to 450 m.
+- **The installer no longer moves `Difficulty`** from elite to nightmare (Hunt v2): with the human profile on every level it changed little, and the default is now normal.
+- **Fixes in V39:** the per-bot human-style and retaliation state (`g_human*`, `g_fightRetaliate`) now moves with the bot list when a bot leaves (before, the bots after it took over each other's aim error, lead and grudge). Server Control lists the seven human-style settings it was missing (`HumanAirAimErrorMrad`, `HumanAimSkillSpread`, `HumanRecoilControlBest`, `HumanRecoilControlWorst`, `HumanFirstShotSeconds`, `HumanSniperShootBackMeters`, `HumanStrafe`), and its defaults for `ArmorEngageMeters` / `ArmorInfantryMeters` are the core's 375 / 150 m (it still showed 800 / 400).
+- **The offline checks run again.** With V36-V39, 28 of the 68 gates failed - 25 more than the original (harnesses without the new hooks, pins on old values, defaults moved). They now build and pass: 66 of 69 including `hunt-results`; `map-layout`, `altbotmod-v35` and `altbotmod-route-coverage` need research files that are not in the repository (as in the original). The V36-V39 checks (`altbotmod_human_style_checks`, `accuracy`, `immediate_engagement`, `v38`, `vehicle_headstart`) pass, with the pins on V37/V38 values brought up to date. The installer, Server Control, Command, LAN, live map and updater PowerShell checks pass.
+- The chat line says `Hunt v4` and `human aim` when that style is on.
 
 ## Hunt v3 (2026-11-19): aim at range
 
@@ -1027,3 +1078,8 @@ An MP_Subway Rush log on V15 showed two separate problems.
 - V16.2 adds tests run on all 25 Rush layouts: a bot at a panel takes over the job, and a hold survives fight orders and a 2 m push. Server Control tests now cover the IP targets, the join command line and the accounts file.
 - The new V16 group (`altbotmod_v16_checks.py`) runs the real functions with stubs: passengers, smoke, the C4 steps, the lock-on timing, safe flag lookups and the boat rule.
 - None of this replaces a live game.
+
+
+## Custom combat update - widened infantry view
+- All five infantry difficulty profiles use a 175-degree half-angle (350-degree total view arc) for target acquisition.
+- World geometry line-of-sight checks remain enabled: this widens the direction bots can notice enemies, but does not let them see or shoot through solid walls.

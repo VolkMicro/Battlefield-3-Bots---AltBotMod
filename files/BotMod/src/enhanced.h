@@ -55,7 +55,19 @@ typedef struct BMConfig {
     int liveMapKeepMB;            // AltBotMod V13: events file size before it is rolled over to events_<port>.old.txt
     int routeActions;             // AltBotMod V15: saved recorded actions - boarding spots, exit points, waits, crouch sections
     int reconBeacons;             // AltBotMod V15: recon bots set radio beacons at the recorded beacon spots
-    int sideSteps;                // AltBotMod V14: 0 none, 1 short steps under fire / close in (default), 2 constant (V9-V13)
+    int sideSteps;                // AltBotMod V14: 0 none, 1 short steps under fire / close in, 2 constant (V9-V13), 3 step and shoot (V39)
+    // AltBotMod V39 "human style": bots aim, react and move like people (the aim model: bm_haim_*, AltBotMod Hunt v4).
+    int humanStyle;                  // 1 = on: a human-like aim error, reaction / first-shot delay, ranges, field of view and strafe pattern
+    float humanAimError;            // mrad of aim error for infantry (6); sniper rifles: humanSniperAimError (3)
+    float humanSniperAimError;
+    float humanVehicleAimError;     // mrad for ground vehicle guns (3); aircraft / AA guns: humanAirAimError (4)
+    float humanAirAimError;
+    float humanAimSpread;           // 0.5: the best bot has (1 - spread) x the aim error, the worst (1 + spread) x
+    float humanRecoilBest, humanRecoilWorst;   // share of the recoil climb a bot cancels while it fires: 0.9 best bot, 0.5 worst
+    float humanReaction, humanFirstShot;       // seconds: 0.25 to notice, 0.2 more before the first shot
+    float humanFov;                 // degrees, the whole horizontal view bots notice / shoot in (160)
+    float humanShootBack, humanSniperShootBack;  // metres a bot shoots back at one that hit it: 150 / 400
+    float humanStrafe;              // strafe level while fighting, 0.6
     // AltBotMod Hunt: bots go looking for the human players instead of only running flag to flag (hunt_native.inc)
     int hunt;                     // 1: up to huntersPerPlayer bots of the other team hunt each human on foot
     int huntersPerPlayer;         // bots hunting one human at a time (0-32; never more than 60% of a team)
@@ -82,7 +94,8 @@ typedef struct BMDifficulty {
 } BMDifficulty;
 #define BM_LEVELS 6        // easy, normal, hard, veteran, elite, nightmare
 int bm_ranges_v25(BMConfig *c);   // AltBotMod V25: ranges at the V9-V24 defaults -> the V25 ones (1 when any moved)
-const BMDifficulty *bm_difficulty_level(int level);         // 1..6 (clamped)
+const BMDifficulty *bm_difficulty_level(int level);         // 1..6 (clamped); with HumanStyle on, the human profile (see bm_human_style_apply)
+void bm_human_style_apply(const BMConfig *c);                   // AltBotMod V39: (re)build the human profile from the config; call after every config load
 const char *bm_difficulty_name(int level);
 int bm_difficulty_parse(const char *text);                  // easy..nightmare / 1-6 / off|0 -> 0..6, -1 invalid
 int bm_bot_difficulty(const BMConfig *c, const char *botName);  // the level this bot plays (0 = off)
@@ -122,6 +135,24 @@ static inline int bm_learn_query(int bot, int question, const float *pos, const 
 // being shot at or with the enemy within closeMeters. Hops while fighting / running come every hopScale x the profile.
 typedef struct BMDodgeStyle { float level, maxMeters, closeMeters, hopScale; int stepMin, stepMax, restMin, restMax, needThreat, hopNeedsThreat; } BMDodgeStyle;
 int bm_dodge_style(const BMConfig *c, const BMDifficulty *profile, BMDodgeStyle *out);   // 0: no side steps at all
+// AltBotMod Hunt v4: human aim (HumanStyle) - how a person's crosshair behaves in a fight, added to the bot's perfect aim. Angles in
+// radians, times in seconds. Three parts: a slow sway around the target, the miss of the swing onto a new target (it settles), and
+// the jolt of being hit (it dies away). bm_haim_sigma: HumanAimErrorMrad at 25 m x the bot's skill; on foot part of it is a fixed
+// miss in metres and part a fixed angle, so the miss in metres grows with the distance, but slower than the distance.
+typedef struct BMHumanAim {
+    float sway[2], settle[2], jolt[2];   // [0] yaw, [1] pitch
+    float settleSeconds;                 // how fast this target's take settles
+    unsigned char started;               // 0: a new target - the next step takes it
+} BMHumanAim;
+float bm_haim_trait(const char *botName);                          // 0 (steadiest) .. 1 (shakiest), the same for a bot all session
+float bm_haim_skill(float trait, float spread);                    // the error multiplier: 1 - spread .. 1 + spread
+float bm_haim_recoil_share(float best, float worst, float trait);  // the share of the recoil climb a bot cancels while it fires
+// crossing: rad/s the target moves across the view; onFoot 0 for a mounted gun (a steady angle, no distance or movement terms)
+float bm_haim_sigma(float errorMrad, float distance, float ownSpeed, float crossing, float skill, int onFoot);
+void bm_haim_reset(BMHumanAim *a);                                 // a new target or a new life: the next step takes it
+void bm_haim_jolt(BMHumanAim *a, float skill);                     // the bot was hit
+// One update: dt since the last one; turnYaw / turnPitch: how far the aim still has to swing (wanted - current), used on a take.
+void bm_haim_step(BMHumanAim *a, float dt, float sigma, float skill, float turnYaw, float turnPitch, float *yawError, float *pitchError);
 // One frame of the step / rest cycle: *dir is the step under way (+1 left, -1 right, 0 standing), *last the last
 // step's side, *until when the step or rest ends. r: a random number. Returns 1 when a new step starts.
 int bm_dodge_next(const BMDodgeStyle *st, signed char *dir, signed char *last, unsigned *until, unsigned now, unsigned r);

@@ -453,7 +453,7 @@ static void jet_combat(BMAirController *s,const BMAirProfile *p,const BMAirConfi
             jet_steer(s,o,aim,1,3.2f,-0.6f,0.6f,dt,out);
             jet_throttle(s,c->jetSpeed+clamp((range-900)*0.05f,0,45),speed,dt,out);
         }
-        float window=clamp(atanf(50/fmaxf(range,1)),0.1f,0.3f);
+        float window=clamp(atanf(35/fmaxf(range,1)),0.07f,0.22f); // V36: tighter jet dogfight gun pass
         ready=attacking && devYaw*devYaw+devPitch*devPitch<window*window;
         air_secondary(s,attacking && fabsf(devYaw)<0.3f && fabsf(devPitch)<0.3f && range>250 && range<1600,dt,out);
     } else {
@@ -470,7 +470,7 @@ static void jet_combat(BMAirController *s,const BMAirProfile *p,const BMAirConfi
             float aim[3]; memcpy(aim,out->aim,12);
             jet_steer(s,o,aim,2,1.4f,-0.9f,0.2f,dt,out);
             jet_throttle(s,JET_DIVE_SPEED,speed,dt,out);
-            float window=clamp(atanf(30/fmaxf(range,1)),0.06f,0.3f);   // (V26: 30 m, was 25)
+            float window=clamp(atanf(20/fmaxf(range,1)),0.045f,0.22f); // V36: tighter jet ground-strafe alignment   // (V26: 30 m, was 25)
             ready=o->targetVisible && range<1400 && devYaw*devYaw+devPitch*devPitch<window*window;
             // AltBotMod V34: no secondary on a ground target - a bot's jet carries the stock heat seekers (air-to-air: they
             // never locked a tank and flew off unguided, V20-V33). Guns on the ground, missiles on aircraft.
@@ -486,7 +486,7 @@ static void jet_combat(BMAirController *s,const BMAirProfile *p,const BMAirConfi
                 s->secondaryThisPass=0; attacking=1;
                 jet_steer(s,o,out->aim,2,1.4f,-0.9f,0.2f,dt,out);
                 jet_throttle(s,JET_DIVE_SPEED,speed,dt,out);
-                float window=clamp(atanf(25/fmaxf(range,1)),0.05f,0.25f);
+                float window=clamp(atanf(18/fmaxf(range,1)),0.04f,0.20f); // V36: tighter initial dive firing window
                 ready=range<1300 && devYaw*devYaw+devPitch*devPitch<window*window;
             } else {
                 s->tactic=BM_TACTIC_SETUP;
@@ -755,7 +755,7 @@ int bm_air_step(BMAirController *s,const BMAirProfile *p,const BMAirConfig *c,
     // V22: a helicopter fires when the nose is within ~6 m of the aim point at the target's range (V20: 0.15 / 0.2 rad - up
     // to 60 m off at 300 m: "pilots miss a lot"); a jet keeps its 0.2 (its law above handles the gun pass)
     float aimRange=finite3(out->aim) ? sqrtf((out->aim[0]-o->position[0])*(out->aim[0]-o->position[0])+(out->aim[1]-o->position[1])*(out->aim[1]-o->position[1])+(out->aim[2]-o->position[2])*(out->aim[2]-o->position[2])) : 300;
-    float tolerance=jet ? 0.2f : clamp(atanf((o->targetAir ? 12.0f : 6.0f)/fmaxf(aimRange,1)),o->targetAir ? 0.035f : 0.025f,0.12f);   // (V24: a helicopter is ~15 m long - 12 m, was 8)
+    float tolerance=jet ? 0.14f : clamp(atanf((o->targetAir ? 8.0f : 4.0f)/fmaxf(aimRange,1)),o->targetAir ? 0.025f : 0.018f,0.09f); // V36: tighter pilot firing alignment   // (V24: a helicopter is ~15 m long - 12 m, was 8)
     int ready=attacking && !hazard && fabsf(out->yawError)<tolerance && fabsf(out->pitchError)<tolerance;
     // Plane cycle: 0.3 s pause / 1.3 s firing, as in VehicleAttacking.
     // V20 helicopter cycle: 0.25 s pause / 0.95 s firing (V19: 0.3 / 0.3).

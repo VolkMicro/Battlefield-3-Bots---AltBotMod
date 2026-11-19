@@ -282,8 +282,7 @@ function Remove-CommandShortcuts {
 function Update-OldDefaults([string]$active) {
     # key = @(new default, old default, older default ...)   (AltBotMod V34: JetAreaMarginMeters 350 / 600 -> 900)
     # Only a line that still holds an old default changes; the file's own line endings and everything else stay as they are.
-    # (AltBotMod Hunt: Difficulty at the old default elite -> nightmare, this build's gunfight level)
-    $old = @{ 'JetAreaMarginMeters' = @('900', '350', '600'); 'Difficulty' = @('nightmare', 'elite') }
+    $old = @{ 'JetAreaMarginMeters' = @('900', '350', '600') }
     $text = [IO.File]::ReadAllText($active); $changed = 0
     foreach ($key in $old.Keys) {
         foreach ($was in ($old[$key] | Select-Object -Skip 1)) {
@@ -575,7 +574,7 @@ function Invoke-BotModSetup {
     if ($renamed) { Say "$renamed setting name(s) updated to the new names (SavedRoutes, ObjectiveMesh); values kept." Cyan }
     $added = Add-MissingSettings $defaults $active
     $moved = Update-OldDefaults $active
-    if ($moved) { Say "$moved setting(s) moved from an old default to the new one (JetAreaMarginMeters 350 / 600 -> 900; Difficulty elite -> nightmare)." Cyan }
+    if ($moved) { Say "$moved setting(s) moved from an old default to the new one (JetAreaMarginMeters 350 / 600 -> 900)." Cyan }
     if ($FleetPreset) { Set-AllFleetPresets $active }
     if ($ObjectivePreset) { Set-AllObjectivePresets $active }
     Cache-Installer $botModDir

@@ -9,13 +9,13 @@ POLICY=r'''
 #include <stdio.h>
 #include "enhanced.h"
 int main(void){
- BMConfig c;bm_defaults(&c);assert(c.infantryRange==260 && c.reconRange==450);   /* V25: 260 / 450 m (180 / 320) */
+ BMConfig c;bm_defaults(&c);assert(c.infantryRange==70 && c.reconRange==150);   /* V39 human style: 70 / 150 m (V25: 260 / 450, before 180 / 320) */
  assert(c.lightMaxSpeed==34 && c.tankMaxSpeed==16 && c.ifvMaxSpeed==20);
- assert(bm_gun_range(&c,bm_vehicle_profile("T90"),0)==800);   /* V25: 800 m (650) */
- assert(bm_gun_range(&c,bm_vehicle_profile("LAV25"),1)==400);   /* V25: 400 m (300) */
+ assert(bm_gun_range(&c,bm_vehicle_profile("T90"),0)==375);   /* V39 human style: 375 m (V25: 800, before 650) */
+ assert(bm_gun_range(&c,bm_vehicle_profile("LAV25"),1)==150);   /* V39: 150 m (V25: 400, before 300) */
  assert(!bm_hold_vehicle("QuadBike",1) && !bm_hold_vehicle("KLR650",1));
  assert(bm_hold_vehicle("M1Abrams",0) && bm_hold_vehicle("HMMWV",1) && !bm_hold_vehicle("HMMWV",0));
- assert(bm_set(&c,"InfantryEngageMeters","nan")==-1 && c.infantryRange==260);
+ assert(bm_set(&c,"InfantryEngageMeters","nan")==-1 && c.infantryRange==70);
  assert(bm_set(&c,"ReconEngageMeters","501")==-1 && bm_set(&c,"WeaponAttachments","2")==-1);
  unsigned checks=0;
  for(float speed=180;speed<=400;speed+=20)for(float dist=50;dist<=900;dist+=25)for(float height=-80;height<=80;height+=20){
@@ -97,6 +97,17 @@ static int fight_holds_at_range(int i,float d){(void)i;(void)d;return 0;}   /* A
 static void fight_posture_close_in(int i){(void)i;}
 static signed char g_aimWeapon[2],g_aimFitFor[2];   /* AltBotMod Hunt v3: one gun here (the per-gun models: hunt_checks.py) */
 static void aim_fit_start(int i){g_aimFixSet[i]=1;g_aimFitFor[i]=g_aimWeapon[i];g_aimFixH[i]=g_aimFixHAvg;g_aimFixV[i]=g_aimFixVAvg;g_aimClimb[i]=g_aimClimbAvg;g_aimFixS[i]=g_aimFixSAvg;}
+// Mr.Cat V36-V39 hooks: no retaliation chase and the human aim off in this fixture (altbotmod_human_style_checks.py covers the aim)
+#include <stdlib.h>
+static unsigned char g_fightRetaliate[2];
+static BMHumanAim g_humanAim[2];static float g_humanCycle[2],g_humanSpeed[2],g_humanRealVel[2][3],g_humanLat[2][16];static unsigned g_humanLatAt[2][16];
+static int human_on(int i){(void)i;return 0;}
+static float human_trait(int i){(void)i;return 0.5f;}
+static float human_skill(int i){(void)i;return 1.0f;}
+static float human_cycle(int i){return g_humanCycle[i]>0.0f?g_humanCycle[i]:1.0f;}
+static float human_dt(int i){(void)i;return 1.0f/30.0f;}
+static void human_own_speed(int i,const float*me){(void)i;(void)me;}
+static void human_lead_point(int i,void*who,const float*tp,float dist,float lag,float*out){(void)i;(void)who;(void)dist;(void)lag;memcpy(out,tp,12);}
 // This fixture isolates weapon timing; complete relocation sequences are in
 // combat_flow_checks.py (the actual native movement code).
 static struct{unsigned until;}g_combatMove[2];
@@ -115,6 +126,7 @@ static float hdist(const float*a,const float*b){float dx=a[0]-b[0],dz=a[2]-b[2];
 '''+re.search(r'^static int is_recon[^\n]+',core,re.M)[0]+'\n'+function(core,'infantry_weapon')+'\n'+function(core,'infantry_trigger_ready')+'\n'+function(core,'fight_range')+'\n#undef FIGHT_ADVANCE_STOP\n#define FIGHT_ADVANCE_STOP 55\n'+'\n'+function(core,'end_fight')+'\n'+function(core,'fight_tick')+r'''
 int main(void){
  bm_defaults(&g_enhanced);g_enhanced.aggression=0;   /* Test15 timing; Aggression is covered by test16_regressions */
+ g_enhanced.infantryRange=260;g_enhanced.reconRange=450;g_enhanced.reactionSeconds=0.20f;g_enhanced.humanStyle=0;   /* (the V25 ranges and reaction this timing was written for; V39's human-style defaults: POLICY above) */
  for(int k=0;k<2;k++){H->bots[k]=players[k];*(int*)(players[k]+8)=k+1;*(float**)(players[k]+16)=bodies[k];bodies[k][3]=100;}
  strcpy(players[0]+64,"Medic");g_fightAdvance[0]=1;H->frame=1000;g_fightTarget[0]=players[1];bodies[1][2]=160;
  BotBrain b={.task=TASK_FIGHT,.taskUntil=10000};assert(fight_tick(0,&b,(char*)bodies[0]) && b.step==1 && b.stepAt==1006);

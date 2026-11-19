@@ -67,7 +67,7 @@ static void emplacement_tick(int i)
         }
         return;
     }
-    if ((H->frame + i) % 30 || !s || *(float *)(s + OFF_SOLDIER_HEALTH) <= 0 || !b->enabled || b->commander || b->prevCommander ||
+    if (fleet_human_headstart() || (H->frame + i) % 30 || !s || *(float *)(s + OFF_SOLDIER_HEALTH) <= 0 || !b->enabled || b->commander || b->prevCommander ||
         (b->task != TASK_NONE && b->task != TASK_DEFEND) || g_drive[i].phase || g_air[i].phase || g_fleet[i].vehicle || g_crewVehicle[i] ||
         g_gliding[i] || H->frame < g_empCooldown[i] || !mode_uses_vehicles() || !level_ready() || !g_vehInput || g_roundCleanup) return;
     int team = player_team(pl);

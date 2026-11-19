@@ -73,7 +73,7 @@ def main():
     assert 'return vt * vt / grip > 28.0f ? 99.0f : vt;' in en and 'd2h(pb, w) < 12.0f * 12.0f' in en
     assert 'if(range<80 || (range<150 && closing>15)){attack=0;approach=1;}' in air
     assert 'float attackCap=jet ? c->attackSeconds : c->attackSeconds*3;' in air and '*250;goal[2]=o->target[2]+(ux*sa+uz*ca)*250;' in air
-    assert 'atanf((o->targetAir ? 12.0f : 6.0f)/fmaxf(aimRange,1)),o->targetAir ? 0.035f : 0.025f' in air
+    assert 'atanf((o->targetAir ? 8.0f : 4.0f)/fmaxf(aimRange,1)),o->targetAir ? 0.025f : 0.018f' in air   # (V36 Mr.Cat: was 12.0f : 6.0f, 0.035f : 0.025f)
     assert '(heliTarget && distance<1200?(tp->kind==BM_AIR_ATTACK?-700:-450)' in an
     assert '#define BM_ENHANCED_VERSION "AltBotMod V35.2 - New Ground"' in eh
     print('PASS: V24 source - recorded roads trusted by the drive sensors (a vehicle or a wall dead ahead within 4 m still counts), the saved route flag, '

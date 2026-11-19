@@ -21,19 +21,19 @@ CONFIG = r'''
 int main(void)
 {
     BMConfig c; bm_defaults(&c);
-    assert(c.sniperRange == 550 && c.sniperOverwatch == 1);
+    assert(c.sniperRange == 150 && c.sniperOverwatch == 1);   // V39 human style: 150 m (was 550)
     assert(bm_set(&c, "SniperEngageMeters", "700") == 1 && c.sniperRange == 700);
     assert(bm_set(&c, "SniperEngageMeters", "2000") == -1 && c.sniperRange == 700 && bm_set(&c, "SniperEngageMeters", "100") == -1);
     assert(bm_set(&c, "SniperOverwatch", "0") == 1 && !c.sniperOverwatch && bm_set(&c, "SniperOverwatch", "2") == -1);
-    bm_defaults(&c); c.aggression = 2;
+    bm_defaults(&c); c.aggression = 2; c.sniperRange = 550; c.reconRange = 450;   // (the V25 reach this was written for; V39 defaults: above)
     const BMWeaponProfile *bolt = bm_weapon_profile("Weapons/SV98/U_SV98", 1, 0), *dmr = bm_weapon_profile("Weapons/SKS/U_SKS", 1, 0);
     assert(bolt->family == BM_W_BOLT && dmr->family == BM_W_DMR);
     assert(fabsf(bm_weapon_range(&c, bolt) - 550) < 0.01f);              // V9: min(500, 320 x 1.15) = 368 m
     c.sniperRange = 900; assert(fabsf(bm_weapon_range(&c, bolt) - 900) < 0.01f);
     c.sniperRange = 200; assert(fabsf(bm_weapon_range(&c, bolt) - 450) < 0.01f);   // never below ReconEngageMeters (V25: 450 m)
-    bm_defaults(&c); c.aggression = 2;
+    bm_defaults(&c); c.aggression = 2; c.sniperRange = 550; c.reconRange = 450;   // (the V25 reach this was written for; V39 defaults: above)
     assert(fabsf(bm_weapon_range(&c, dmr) - 500) < 0.01f);       // marksman rifles: ReconEngageMeters x 1.15 (V25: 450 m), capped at the rifle's 500 m
-    puts("PASS: SniperEngageMeters (default 550, 150-900) and SniperOverwatch read from enhanced.ini; bolt rifles reach 550 m (V9 368 m), never less than ReconEngageMeters; marksman rifles unchanged");
+    puts("PASS: SniperEngageMeters (default 150 since V39, was 550; 150-900) and SniperOverwatch read from enhanced.ini; bolt rifles reach 550 m (V9 368 m), never less than ReconEngageMeters; marksman rifles unchanged");
     return 0;
 }
 '''
@@ -128,6 +128,7 @@ static int survey(int i, int key) { int r = 0; for (int k = 0; k < 12 && g_snipe
 int main(void)
 {
     bm_defaults(&g_enhanced); g_enhanced.aggression = 2; grid.phase = 2; grid.serial = 7;
+    g_enhanced.sniperRange = 550; g_enhanced.reconRange = 450;   // (the V25 reach this was written for; V39 defaults 150 m: the config test above)
     H->botCount = 4; H->frame = 1000;
     for (int k = 0; k < 4; k++) H->bots[k] = players[k];
     // reach: a bolt-rifle recon sees and fights out to SniperEngageMeters; a marksman-rifle recon keeps the recon range

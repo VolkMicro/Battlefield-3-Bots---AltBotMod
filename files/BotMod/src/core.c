@@ -2100,6 +2100,8 @@ static int stair_tick(int i, char *soldier, BotNav *nav)
     return 1;
 }
 
+static int plan_path(int i, char *soldier, float tx, float ty, float tz);
+static int plan_budget_left(void);
 static void steer_bot(int i, char *soldier)
 {
     BotNav *nav = bot_nav(i);
@@ -2117,7 +2119,32 @@ static void steer_bot(int i, char *soldier)
     float *pos = (float *)(soldier + OFF_SOLDIER_POSITION);
     float throttle = 0;
     Progress *pg = &g_progress[i];
-    if (nav->mode == 4) {   // push: keep walking into the point (e.g. against a vehicle being repaired), no stuck logic
+    if (nav->mode == 4) {   // direct pursuit / push; retain a watchdog so a blocked bot cannot spin or walk into a wall forever
+        float mx = pos[0] - pg->x, mz = pos[2] - pg->z, moved2 = mx * mx + mz * mz;
+        if (!pg->frame || moved2 > 0.25f) {
+            pg->frame = H->frame; pg->x = pos[0]; pg->z = pos[2]; pg->directTries = 0;
+        } else if (H->frame - pg->frame > 30) { // V38: 1.0 s without meaningful movement - recover before a blocked pursuit turns into a spin
+            if (pg->directTries < 2 && plan_budget_left() && plan_path(i, soldier, nav->x, pos[1], nav->z)) {
+                nav->mode = 3; pg->frame = H->frame; pg->x = pos[0]; pg->z = pos[2];
+                pg->directTries = 0;
+                bot_log("path: %s direct pursuit blocked; switching to a routed approach", (char *)H->bots[i] + OFF_PLAYER_ONLINE_NAME);
+                return;
+            }
+            if (pg->directTries < 2) {
+                pg->directTries++; pg->frame = H->frame; pg->x = pos[0]; pg->z = pos[2];
+                pg->unstickUntil = H->frame + 18; pg->strafe = (rand() & 1) ? 1.0f : -1.0f;
+                H->botMove[i][0] = -0.55f; H->botMove[i][1] = pg->strafe; H->botMove[i][2] = 0;
+                bot_log("path: %s direct pursuit stuck; backing off and sidestepping (try %d)", (char *)H->bots[i] + OFF_PLAYER_ONLINE_NAME, pg->directTries);
+                return;
+            }
+            // Fall back to the ordinary goto controller, which has its own stuck/jump/reroute recovery.
+            nav->mode = 2; pg->frame = H->frame; pg->x = pos[0]; pg->z = pos[2]; pg->directTries = 0;
+            bot_log("path: %s direct pursuit handed to normal navigation recovery", (char *)H->bots[i] + OFF_PLAYER_ONLINE_NAME);
+        }
+        if (pg->unstickUntil > H->frame) {
+            H->botMove[i][0] = -0.55f; H->botMove[i][1] = pg->strafe; H->botMove[i][2] = 0;
+            return;
+        }
         nav->targetYaw = yaw_towards(nav->x - pos[0], nav->z - pos[2]);
         float y = *(float *)(soldier + OFF_SOLDIER_YAW), t = fmodf(nav->targetYaw, 6.2831853f);
         if (t > 0) t -= 6.2831853f;
@@ -2125,8 +2152,6 @@ static void steer_bot(int i, char *soldier)
         H->botMove[i][0] = fabsf(err) < 0.6f ? 1.0f : 0.0f;
         H->botMove[i][1] = 0;
         H->botMove[i][2] = fmaxf(-1.0f, fminf(1.0f, -err * 2.0f));
-        pg->frame = H->frame;
-        pg->x = pos[0]; pg->z = pos[2];
         return;
     }
     if (H->frame < g_vaultUntil[i]) {   // jumped: keep walking into it so the vault completes
@@ -2211,7 +2236,7 @@ static void steer_bot(int i, char *soldier)
     if ((throttle <= 0 && nav->mode != 2 && nav->mode != 3) || !pg->frame || moved2 > 1.0f) {   // (turning on the spot = no progress)
         if (moved2 > 1.0f) { pg->directTries = 0; g_waySkips[i] = 0; }
         pg->x = pos[0]; pg->z = pos[2]; pg->frame = H->frame;
-    } else if (moved2 < 0.09f && H->frame - pg->frame > 30 && pg->directTries == 0 && (fenceAct = try_cut_fence(i, soldier))) {
+    } else if (moved2 < 0.09f && H->frame - pg->frame > 24 && pg->directTries == 0 && (fenceAct = try_cut_fence(i, soldier))) {
         // a catalogued fence in the way: knifed (steer_bot holds still meanwhile), or one no knife gets through - go round
         if (fenceAct == 2) {
             pg->frame = H->frame;
@@ -2219,7 +2244,7 @@ static void steer_bot(int i, char *soldier)
             pg->strafe = (rand() & 1) ? 1.0f : -1.0f;
             on_bot_stuck(i, soldier);
         }
-    } else if (moved2 < 0.09f && H->frame - pg->frame > 30 && pg->directTries == 0 && H->frame >= g_crouchWalkUntil[i] + 3 * 30 &&
+    } else if (moved2 < 0.09f && H->frame - pg->frame > 24 && pg->directTries == 0 && H->frame >= g_crouchWalkUntil[i] + 3 * 30 &&
                g_crouchAction >= 0 && crouch_gap(soldier)) {
         bot_crouch(i);
         g_crouchWalkUntil[i] = H->frame + 75;
@@ -2227,11 +2252,11 @@ static void steer_bot(int i, char *soldier)
         g_crouchWalks++;
         static unsigned logged;
         if (logged++ < 40) bot_log("path: %s is blocked at head height - crouches through at (%.1f, %.1f)", (char *)H->bots[i] + OFF_PLAYER_ONLINE_NAME, pos[0], pos[2]);
-    } else if (moved2 < 0.09f && H->frame - pg->frame > 30 && pg->directTries == 0 && soldier_ahead(i, soldier) && g_waySkips[i] < 6) {
+    } else if (moved2 < 0.09f && H->frame - pg->frame > 24 && pg->directTries == 0 && soldier_ahead(i, soldier) && g_waySkips[i] < 6) {
         // AltBotMod V18: a soldier in front (a teammate in a doorway / on a stairwell) - not the map: no straight walk into
         // the wall, no links blocked; it makes way (make_way_ask) and this bot waits a moment (at most 6 s, then as before)
         g_waySkips[i]++; pg->frame = H->frame; make_way_ask(i, soldier);
-    } else if (moved2 < 0.09f && H->frame - pg->frame > 30 && pg->directTries == 0) {
+    } else if (moved2 < 0.09f && H->frame - pg->frame > 24 && pg->directTries == 0) {
         // not moving at all for 1 s: walk straight at the destination for 3 s
         g_waySkips[i] = 0;
         pg->directTries = 1;
@@ -3805,12 +3830,11 @@ static void brain_tick(int i)
             if (dx * dx + dz * dz > run * run) g_sprintUntil[i] = H->frame + 4;
         }
     }
-    if (rush_operator_holding(i)) {   // AltBotMod V16.2: arming / defusing - no other job, no fight, no cover, until done or dead
+    if (rush_operator_holding(i) && b->task != TASK_FIGHT) {   // arming is interruptible by a confirmed infantry sighting
         if (b->task != TASK_NONE) end_task(i, b, "arming / defusing the M-COM");
         mode_brain_tick(i, soldier); return;
     }
-    int mcomOperator = rush_operator_focus(i, NULL);   // AltBotMod V16.1: at the M-COM it is arming / defusing - nothing else
-    if (mcomOperator && b->task == TASK_FIGHT && rush_operator_focus(i, g_fightTarget[i])) end_task(i, b, "back to the M-COM it is arming / defusing");
+    int mcomOperator = rush_operator_focus(i, NULL);   // preserve focus for ordinary jobs, not an active firefight
     if (!mcomOperator) cover_react(i, soldier);
     if (!mcomOperator && H->frame % 15 == (unsigned)(i % 15)) { rocket_scan(i, soldier); c4_scan(i, soldier); vehicle_threat_scan(i, soldier); repair_scan(i, soldier); revive_scan(i, soldier); }
     if (H->frame % 30 == (unsigned)(i % 30)) self_requests(i, soldier);
@@ -4414,7 +4438,7 @@ static void difficulty_status(void)
     bot_log("difficulty: %s%s - react %.2f s, burst x%.2f pause x%.2f, fire window %.2f m / %.3f rad, ranges fight/engage/detect %.0f/%.0f/%.0f m, "
             "fov %.0f deg, close to %.0f m, cover below %.0f hp, side steps %.1f, hops %.1f/%.1f s, far crouch >%.0f m %.0f%%, ADS >%.0f m",
             bm_difficulty_name(g_enhanced.difficulty), g_enhanced.randomDifficulty ? " (each bot one level either side)" : "",
-            P->reaction, P->burst / 12.0f, P->pause / 10.0f, P->aimMargin, P->aimTol, P->fightRange, P->engageRange, P->detectRange,
+            (P->reaction + P->settle / 30.0f), P->burst / 12.0f, P->pause / 10.0f, P->aimMargin, P->aimTol, P->fightRange, P->engageRange, P->detectRange,
             P->fov, fmaxf(P->advanceStop, 6.0f), P->coverBelow, P->strafe, P->jumpFight, P->jumpRun, P->farCrouch, P->farCrouchChance * 100, P->ads);
     if (P->noCoverMeters > 0 || P->push || P->dodge || P->chaseSeconds > 0 || P->detectSeconds > 0)   // AltBotMod Hunt (nightmare)
         bot_log("difficulty: %s also - no cover from an enemy within %.0f m, %s, chases %.0f s, %s, looks round every %.2f s",
@@ -4461,13 +4485,17 @@ static float enemy_meters(char *soldier, char *enemy)   // how far an enemy play
 static int is_recon(int i) { return strstr(BOT_ROSTER(H->bots[i]), "Recon") != NULL; }
 #define RECON_SPOTTED_RANGE    (g_enhanced.reconRange * bm_aggr(&g_enhanced,1,1.2f,1.35f))
 // How far a bot keeps fighting a soldier: recon go further, much further for a spotted one.
+static unsigned char g_fightRetaliate[MAX_BOTS];   // (declared again below; V39 reads it here)
 static float fight_range(int i, char *t)
 {
     const BMDifficulty *P = bot_profile(i);
     if (P && !is_recon(i)) {   // AltBotMod V9: the profile's fight range, the weapon's own reach when shorter
         const BMWeaponProfile *w = g_primaryDoctrine[i] ? g_primaryDoctrine[i] : bm_weapon_profile(NULL, 0, 0);
         (void)t;
-        return g_enhanced.weaponHandling ? fminf(w->maxRange, P->fightRange * w->rangeFactor) : P->fightRange;
+        float r = g_enhanced.weaponHandling ? fminf(w->maxRange, P->fightRange * w->rangeFactor) : P->fightRange;
+        // AltBotMod V39 (HumanShootBackMeters): one that was shot by this target shoots back much further out than it would start a fight
+        if (g_enhanced.humanStyle && g_fightRetaliate[i]) r = fmaxf(r, fminf(g_enhanced.humanShootBack, w->maxRange));
+        return r;
     }
     if(g_enhanced.weaponHandling){(void)t;return bm_weapon_range(&g_enhanced,
         g_primaryDoctrine[i]?g_primaryDoctrine[i]:bm_weapon_profile(NULL,is_recon(i),0))*1.10f;}
@@ -4498,6 +4526,8 @@ static int soldier_ammo2(char *soldier, int slot, int *loaded, int *spare);
 static int primary_empty(char *soldier) { int l, s; return soldier_ammo2(soldier, 0, &l, &s) && l + s == 0; }
 static char *g_fightTarget[MAX_BOTS];
 static unsigned char g_fightRetreat[MAX_BOTS];
+static unsigned char g_fightRetaliate[MAX_BOTS];  // keep pursuing the player who actually damaged this bot
+static int g_forceFight;                         // damage retaliation can interrupt objective/M-COM focus
 static unsigned g_fightSeenAt[MAX_BOTS];
 // Caspian V3: self-calibrating aim. The look pitch is computed from an assumed eye height, but the real camera
 // sits higher (Test15 found 0.9 m and 1.2 m aim points both went high and settled on 0.55 m). Every bot bullet
@@ -4596,6 +4626,76 @@ static void lead_point(int i, void *who, const float *tp, float dist, float *out
     lead_point_speed(i, who, tp, dist, BULLET_SPEED, out);
 }
 
+// ---- AltBotMod Hunt v4: human aim (HumanStyle=1; bm_haim_* in enhanced.c). A person's sway, the miss taking a new target and
+// the jolt of a hit go into the aim point and the pitch. And motion is taken in late: the bot leads with its target's velocity
+// as it was a reaction time ago (human_lead_point), so a target that turns or stops is led the old way for a moment.
+// Off with HumanStyle=0 (the V38 closed-loop aim). ----
+static BMHumanAim g_humanAim[MAX_BOTS];
+static unsigned g_humanAimAt[MAX_BOTS];                       // frame of the last error update (its dt)
+static float g_humanLat[MAX_BOTS][16]; static unsigned g_humanLatAt[MAX_BOTS][16];   // sideways error put into the aim (m at the target), by frame
+static float g_humanPrevPos[MAX_BOTS][3]; static unsigned g_humanPrevAt[MAX_BOTS]; static float g_humanSpeed[MAX_BOTS];   // own speed (m/s)
+static float g_humanTrack[MAX_BOTS][16][3]; static unsigned g_humanTrackAt[MAX_BOTS][16]; static void *g_humanTrackWho[MAX_BOTS];   // the target's last half second
+static float g_humanRealVel[MAX_BOTS][3];                     // the target's velocity now (m/s; how fast it crosses the view)
+static float g_humanCycle[MAX_BOTS];                          // this burst's rhythm, 0.8 - 1.6 x the weapon's
+static int human_on(int i) { return g_enhanced.humanStyle && bot_profile(i) != NULL; }
+static float human_trait(int i) { return bm_haim_trait((char *)H->bots[i] + OFF_PLAYER_ONLINE_NAME); }
+static float human_skill(int i) { return bm_haim_skill(human_trait(i), g_enhanced.humanAimSpread); }
+static float human_cycle(int i) { return g_humanCycle[i] > 0.0f ? g_humanCycle[i] : 1.0f; }
+static void human_new_target(int i) { bm_haim_reset(&g_humanAim[i]); g_humanTrackWho[i] = NULL; memset(g_humanLat[i], 0, sizeof g_humanLat[i]); memset(g_humanLatAt[i], 0, sizeof g_humanLatAt[i]); }
+static void human_jolt(int i) { if (g_enhanced.humanStyle) bm_haim_jolt(&g_humanAim[i], human_skill(i)); }
+// seconds since the last error update of this bot (0 on the first, at most 0.2)
+static float human_dt(int i)
+{
+    float dt = g_humanAimAt[i] && H->frame > g_humanAimAt[i] ? (H->frame - g_humanAimAt[i]) / 30.0f : 0.0f;
+    g_humanAimAt[i] = H->frame ? H->frame : 1;
+    return dt > 0.2f ? 0.2f : dt;
+}
+static void human_own_speed(int i, const float *me)
+{
+    if (!g_humanPrevAt[i] || H->frame - g_humanPrevAt[i] > 30) { memcpy(g_humanPrevPos[i], me, 12); g_humanPrevAt[i] = H->frame ? H->frame : 1; g_humanSpeed[i] = 0; return; }
+    if (H->frame - g_humanPrevAt[i] < 4) return;   // a speed over about 0.15 s
+    float dt = (H->frame - g_humanPrevAt[i]) / 30.0f, dx = me[0] - g_humanPrevPos[i][0], dz = me[2] - g_humanPrevPos[i][2];
+    g_humanSpeed[i] = sqrtf(dx * dx + dz * dz) / dt;
+    memcpy(g_humanPrevPos[i], me, 12); g_humanPrevAt[i] = H->frame;
+}
+// The target's position remembered for frame f (within 2 frames of it): its slot, or -1.
+static int human_track_slot(int i, unsigned f)
+{
+    int best = -1; unsigned bestGap = 3;
+    for (int k = 0; k < 16; k++) {
+        unsigned at = g_humanTrackAt[i][k], gap = at > f ? at - f : f - at;
+        if (at && gap < bestGap) { best = k; bestGap = gap; }
+    }
+    return best;
+}
+// The target's horizontal velocity between frames f - 6 and f (0.2 s), as remembered; 0 when that part of the track is missing.
+static void human_track_velocity(int i, unsigned f, float *v)
+{
+    v[0] = v[1] = v[2] = 0.0f;
+    int b = human_track_slot(i, f), a = human_track_slot(i, f - 6);
+    if (b < 0 || a < 0 || g_humanTrackAt[i][b] <= g_humanTrackAt[i][a]) return;
+    float dt = (g_humanTrackAt[i][b] - g_humanTrackAt[i][a]) / 30.0f;
+    for (int k = 0; k < 3; k += 2) {
+        float s = (g_humanTrack[i][b][k] - g_humanTrack[i][a][k]) / dt;
+        v[k] = fabsf(s) < 40.0f ? s : 0.0f;   // a respawn or a vehicle seat change is not a speed
+    }
+}
+// Where to aim at a moving target the way a person does: where it is now, plus the way it has been seen moving for the bullet's
+// flight - seen `lag` seconds late (a reaction time, at most 0.3 s). A new target is not led until its motion has been watched.
+static void human_lead_point(int i, void *who, const float *tp, float dist, float lag, float *out)
+{
+    unsigned now = H->frame;
+    if (g_humanTrackWho[i] != who) { g_humanTrackWho[i] = who; memset(g_humanTrackAt[i], 0, sizeof g_humanTrackAt[i]); }
+    memcpy(g_humanTrack[i][now & 15], tp, 12); g_humanTrackAt[i][now & 15] = now ? now : 1;
+    float seen[3];
+    human_track_velocity(i, now, g_humanRealVel[i]);
+    human_track_velocity(i, now - (unsigned)(fminf(fmaxf(lag, 0.0f), 0.3f) * 30.0f + 0.5f), seen);
+    float flight = dist / BULLET_SPEED;
+    out[0] = tp[0] + seen[0] * flight;
+    out[1] = tp[1];
+    out[2] = tp[2] + seen[2] * flight;
+}
+
 // A spot near the bot where its eyes see the target but something low in front hides its body from it.
 static int find_firing_spot(int i, char *soldier, const float *teye, const float *taim, float *out)
 {
@@ -4622,7 +4722,8 @@ static int find_firing_spot(int i, char *soldier, const float *teye, const float
 
 static void start_fight(int i, char *target, int retreat, const char *why)
 {
-    if (rush_operator_focus(i, target)) return;   // arming / defusing an M-COM: no fight with an enemy over 6 m away
+    if (!g_forceFight && rush_operator_focus(i, target)) return;   // retaliation may interrupt any current objective
+    if (g_fightTarget[i] != target) human_new_target(i);   // AltBotMod V39: a new target - the aim flicks to it and settles
     combat_motion_cancel(i);
     BotBrain *b = bot_brain(i);
     // AltBotMod Hunt: a nightmare bot on the move closes in on whoever it fights - returning fire, a close threat, back out of
@@ -4641,6 +4742,7 @@ static void start_fight(int i, char *target, int retreat, const char *why)
     b->taskUntil = H->frame + FIGHT_MAX_FRAMES;
     g_fightTarget[i] = target;
     g_fightRetreat[i] = (unsigned char)retreat;
+    g_fightRetaliate[i] = 0;
     g_fightSeenAt[i] = H->frame;
     g_fightBursts[i] = 0;
     g_fightAdvance[i] = (unsigned char)push; g_fightChase[i] = 0;
@@ -4736,13 +4838,15 @@ static void cover_react(int i, char *soldier)
     g_lastHealth[i] = h;
     if (!hit || player_vehicle(pl)) return;
     g_hitAt[i] = H->frame;
+    human_jolt(i);   // human aim: a hit jolts the aim
     if (b->task == TASK_REVIVE) end_revive(i,b,"medic under fire");
-    if (b->task == TASK_SUPPLY) return;
     float eye[3];
     char *shooter = likely_shooter(i, soldier, eye);
     if (!shooter) {
         // AltBotMod V9 (as in the dev build): hit by someone unseen - turn on the nearest enemy in reach and fight it
-        char *closest = NULL; float best = engage_range(i) * engage_range(i), *me = (float *)(soldier + OFF_SOLDIER_POSITION);
+        float reach = engage_range(i);
+        if (g_enhanced.humanStyle && g_enhanced.humanShootBack > reach) reach = g_enhanced.humanShootBack;   // AltBotMod V39: shoots back out to HumanShootBackMeters (150 m)
+        char *closest = NULL; float best = reach * reach, *me = (float *)(soldier + OFF_SOLDIER_POSITION);
         char *pm = player_manager();
         if (pm && bot_profile(i) && (b->task == TASK_NONE || b->task == TASK_DEFEND || b->task == TASK_FOLLOW)) {
             void **arr = NULL; unsigned count = 0;
@@ -4786,34 +4890,25 @@ static void cover_react(int i, char *soldier)
         } else if (b->task != TASK_COVER) go_to_cover(i, soldier, shooter, eye);
         return;
     }
-    if (b->task == TASK_ROCKET) return;   // busy with a vehicle
-    {
-        char *ss = *(char **)(shooter + OFF_PLAYER_SOLDIER);
-        float *me = (float *)(soldier + OFF_SOLDIER_POSITION);
-        if (ss) {
-            float *tp = (float *)(ss + OFF_SOLDIER_SPAWN_POSITION), dx = tp[0] - me[0], dz = tp[2] - me[2], d = sqrtf(dx * dx + dz * dz);
-            if (d > fight_range(i, shooter) && hunt_quarry(i) == shooter) {   // AltBotMod Hunt: the one it is after - no hiding, on it goes
-                hunt_saw(shooter, tp);
-                return;
-            }
-            if (d > fight_range(i, shooter)) {
-                if (b->task != TASK_COVER && b->task != TASK_FIGHT && go_to_cover(i, soldier, shooter, eye))
-                    bot_log("cover: %s hit by %s from %.0f m - out of reach, takes cover", pl + OFF_PLAYER_ONLINE_NAME, shooter + OFF_PLAYER_ONLINE_NAME, d);
-                return;
-            }
+    // (Hunt v4 merge: Mr.Cat's V36 retaliation - being hit drops any job and pursues the attacker - replaces Hunt's out-of-reach
+    // cover rules; a hunted player's gunfire still reaches its hunters through the hunt director)
+    // Being hit overrides non-combat jobs: stop supplying, reviving, covering, or using a rocket task
+    // and turn on the actual shooter. A long-range shooter is pursued until the current weapon can reach.
+    if (b->task == TASK_SUPPLY || b->task == TASK_COVER || b->task == TASK_ROCKET) {
+        b->task = TASK_NONE;
+        b->serviceTarget = NULL;
+        b->step = 0;
+        b->waiting = 0;
+        g_threat[i] = NULL;
+        g_threatVeh[i] = NULL;
+    }
+    if (b->task != TASK_FIGHT) {   // being hit takes priority over every non-combat task
+        {   g_forceFight = 1;
+            start_fight(i, shooter, 0, "returning fire - pursuing attacker");
+            g_forceFight = 0;
         }
-    }
-    if (b->task == TASK_COVER) {
-        if (b->step == 0) return;   // still running for it
-        if (H->frame - g_coverHitAt[i] > 4 * 30) g_coverHits[i] = 0;
-        g_coverHitAt[i] = H->frame;
-        if (++g_coverHits[i] >= 2) start_fight(i, shooter, 0, "cover is not working");
-        return;
-    }
-    if (b->task != TASK_FIGHT) {   // always shoot back first
-        {   const BMDifficulty *P = bot_profile(i);   // V9: badly hurt (below the profile's CoverBelowHealth): one burst, then cover
-            int hurt = P && h < P->coverBelow && !fight_stands_ground(i, enemy_meters(soldier, shooter));   // (Hunt: not from one this close)
-            start_fight(i, shooter, hurt, hurt ? "returning fire - badly hurt" : "returning fire"); }
+        g_fightRetaliate[i] = 1;
+        b->taskUntil = H->frame + 90 * 30;   // pursue the attacker for up to 90 s
         g_fightHitsTaken[i] = 1;
         fight_note_target_health(i);
         return;
@@ -4822,6 +4917,8 @@ static void cover_react(int i, char *soldier)
         g_fightTarget[i] = shooter; g_fightSeenAt[i] = H->frame; g_fightHitsTaken[i] = 0;
         fight_note_target_health(i);
     }
+    g_fightRetaliate[i] = 1;
+    b->taskUntil = H->frame + 90 * 30;
     g_fightHitsTaken[i]++;
     const char *why = cover_reason(i, soldier, shooter);
     if (why) {
@@ -4876,6 +4973,7 @@ static void end_fight(int i, BotBrain *b, const char *why)
     g_fineAim[i] = 0;
     char *lastTarget = g_fightTarget[i];
     g_fightTarget[i] = NULL;
+    g_fightRetaliate[i] = 0;
     g_fightMoveUntil[i] = 0;
     g_cooldownWho[i] = lastTarget;   // cool off on this one; others after a short breather
     g_engageCooldown[i] = H->frame + ENGAGE_COOLDOWN_FRAMES;
@@ -4945,10 +5043,19 @@ static int fight_tick(int i, BotBrain *b, char *soldier)
     int sniper = wp && (wp->family == BM_W_BOLT || wp->family == BM_W_DMR) && g_fightSlot[i] == 0;
     // V10: the head only within 150 m; further out the chest (a head at 400 m is a few pixels, a miss every time)
     if (sniper && hdist(me, tp) > 150.0f) sniper = 0;
+    if (g_enhanced.humanStyle) sniper = 0;   // AltBotMod V39: the human style aims for the chest, snipers too
     const float *pts = sniper ? head[0] : land[0];
     float eye[3] = {me[0], me[1] + eyeH[myPose], me[2]}, aim[3] = {tp[0], tp[1] + pts[tPose * 3], tp[2]}, hit[3];
     float dx = aim[0] - eye[0], dz = aim[2] - eye[2], dh = sqrtf(dx * dx + dz * dz);
-    if (dh > fight_range(i, t)) { end_fight(i, b, "out of range"); return 0; }
+    if (dh > fight_range(i, t)) {
+        BotNav *farNav = bot_nav(i);
+        farNav->mode = 4;
+        farNav->x = tp[0];
+        farNav->z = tp[2];
+        farNav->targetYaw = yaw_towards(dx, dz);
+        g_fightSeenAt[i] = H->frame;   // keep tracking a live target while closing to weapon range
+        return 1;
+    }
     // The first landing point actually in sight. (V2 tested 0.55/0.9/1.25 m but pointed the pitch at them
     // directly, and with the camera above our eye the higher two sent the bullets over the head.)
     int visible = 0; float landing = pts[tPose * 3];
@@ -4959,7 +5066,9 @@ static int fight_tick(int i, BotBrain *b, char *soldier)
     if (g_testVictim && t == g_testVictim) visible = 1;   // test: fire regardless
     if (!g_aimFixSet[i] || g_aimFitFor[i] != g_aimWeapon[i]) aim_fit_start(i);   // (AltBotMod Hunt v3: from this gun's model)
     unsigned firing = b->step == 2 && g_burstStart[i] ? H->frame - g_burstStart[i] + 2 : 0;   // +2: the pitch lags a little
-    float aimValue = landing - g_aimBias[myPose] - g_aimFixH[i] - (g_aimFixV[i] + g_aimClimb[i] * (float)(firing > 90 ? 90 : firing)) * dh;
+    // Human aim: a person holds down only part of the recoil climb (HumanRecoilControlBest / Worst by the bot), the rest climbs on over a burst
+    float recoilCtl = human_on(i) ? bm_haim_recoil_share(g_enhanced.humanRecoilBest, g_enhanced.humanRecoilWorst, human_trait(i)) : 1.0f;
+    float aimValue = landing - g_aimBias[myPose] - g_aimFixH[i] - (g_aimFixV[i] + g_aimClimb[i] * recoilCtl * (float)(firing > 90 ? 90 : firing)) * dh;
     aim[1] = tp[1] + aimValue;
     g_aimValue[i] = aimValue; g_aimValueAt[i] = H->frame; g_aimPose[i] = (unsigned char)myPose; g_aimLanding[i] = landing;
     if (visible) {
@@ -4968,10 +5077,17 @@ static int fight_tick(int i, BotBrain *b, char *soldier)
         {   const BMDifficulty *P = bot_profile(i);   // AltBotMod Hunt (nightmare): no "long enough" while it is in sight
             if (P && P->push && b->taskUntil < H->frame + 5 * 30) b->taskUntil = H->frame + 5 * 30; }
     }
+    else if (g_fightRetaliate[i]) g_fightSeenAt[i] = H->frame;   // (Mr.Cat V36: the one that hit it is not lost)
     else if (H->frame - g_fightSeenAt[i] > ((g_fightAdvance[i] || g_combatMove[i].until) ? fight_chase_frames(i) : FIGHT_LOST_FRAMES)) { end_fight(i, b, "lost sight"); return 0; }
+    float humanPitchErr = 0.0f;
+    if (human_on(i)) human_own_speed(i, me);
     {   // lead a moving target
         float lp[3];
-        lead_point(i, t, tp, dh, lp);
+        int human = human_on(i);
+        float skill = human ? human_skill(i) : 1.0f, errMrad = human ? ((wp && (wp->family == BM_W_BOLT || wp->family == BM_W_DMR)) ? g_enhanced.humanSniperAimError : g_enhanced.humanAimError) : 0.0f;
+        // a reaction time for motion: 0.1 - 0.25 s by the bot (none with a perfect aim, longer with a worse one)
+        float lag = human ? (0.10f + 0.15f * human_trait(i)) * fminf(fmaxf(errMrad / 6.0f, 0.0f), 2.0f) : 0.0f;
+        if (human) human_lead_point(i, t, tp, dh, lag, lp); else lead_point(i, t, tp, dh, lp);
         aim[0] = lp[0]; aim[2] = lp[2];
         float tf = dh / BULLET_SPEED;
         aim[1] += 0.5f * 9.81f * tf * tf;   // bullet drop (~0.85 m at 250 m)
@@ -4980,6 +5096,21 @@ static int fight_tick(int i, BotBrain *b, char *soldier)
         float ux = tp[0] - me[0], uz = tp[2] - me[2], ul = sqrtf(ux * ux + uz * uz) + 1e-6f, shift = g_aimFixS[i] * ul;
         aim[0] -= shift * (-uz / ul); aim[2] -= shift * (ux / ul);
         dx = aim[0] - eye[0]; dz = aim[2] - eye[2]; dh = sqrtf(dx * dx + dz * dz);
+        if (human && errMrad > 0.0f) {   // Hunt v4 human aim: the person's error, put into the aim point (sideways) and the pitch
+            float curYaw = *(float *)(soldier + OFF_SOLDIER_YAW), curPitch = *(float *)(soldier + OFF_SOLDIER_PITCH);
+            float wantYaw = yaw_towards(dx, dz), wantPitch = atan2f(aim[1] - eye[1], dh);
+            float turnYaw = remainderf(wantYaw - curYaw, 6.2831853f), turnPitch = wantPitch - curPitch;
+            float crossing = fabsf(g_humanRealVel[i][0] * (-uz / ul) + g_humanRealVel[i][2] * (ux / ul)) / fmaxf(ul, 2.0f);   // rad/s the target crosses the view
+            float sigma = bm_haim_sigma(errMrad, ul, g_humanSpeed[i], crossing, skill, 1), ey, ep;
+            bm_haim_step(&g_humanAim[i], human_dt(i), sigma, skill, turnYaw, turnPitch, &ey, &ep);
+            // a yaw error ey moves the aim point sideways by -ey * dh along n = (-dz, dx) / dh (yaw = atan2(dx, dz)); on_process_hit
+            // takes the same sideways error out of what it learns, so the calibration does not cancel the error again
+            float lat = -ey * dh;
+            aim[0] += lat * (-dz / (dh + 1e-6f)); aim[2] += lat * (dx / (dh + 1e-6f));
+            g_humanLat[i][H->frame & 15] = lat; g_humanLatAt[i][H->frame & 15] = H->frame;
+            dx = aim[0] - eye[0]; dz = aim[2] - eye[2]; dh = sqrtf(dx * dx + dz * dz);
+            humanPitchErr = ep;
+        }
     }
     BotNav *nav = bot_nav(i);
     if (g_fightMoveUntil[i]) {   // recon: into the firing position first
@@ -4990,6 +5121,9 @@ static int fight_tick(int i, BotBrain *b, char *soldier)
     }
     int relocating=combat_motion_tick(i,b,soldier,tp,dh);
     if(relocating)nav->targetYaw=yaw_towards(dx,dz);
+    else if (g_fightRetaliate[i] && !visible) {
+        nav->mode = 4; nav->x = tp[0]; nav->z = tp[2]; nav->targetYaw = yaw_towards(dx, dz);
+    }
     else if (visible || !g_fightAdvance[i]) {
         if (g_fightAdvance[i] && dh > FIGHT_ADVANCE_STOP && !(visible && fight_holds_at_range(i, dh))) {   // close in, facing it
             fight_posture_close_in(i);   // (AltBotMod Hunt v3: up from the far-fight crouch to close in)
@@ -5007,14 +5141,16 @@ static int fight_tick(int i, BotBrain *b, char *soldier)
         g_chaseFollowAt[i] = H->frame;
         go_towards(i, soldier, tp[0], tp[1], tp[2]);
     }
-    g_aimPitch[i] = atan2f(aim[1] - eye[1], dh);
+    g_aimPitch[i] = atan2f(aim[1] - eye[1], dh) + humanPitchErr;
     if (b->step != 0 && fight_grenade_tick(i, b, soldier, ts, visible, dh)) return 1;   // AltBotMod V9
     if (b->step == 0) {
         g_fightSlot[i] = primary_empty(soldier) ? 1 : 0;   // sidearm when the primary is dry
         press_button(i, SLOT_ACTION(g_fightSlot[i]), 3); b->step = 1;
         {   const BMDifficulty *P = bot_profile(i);   // V9: the profile's reaction (+ aim settle)
             b->stepAt = H->frame + (P ? (unsigned)ceilf(P->reaction * 30) + (unsigned)P->settle
-                                      : (unsigned)ceilf(g_enhanced.reactionSeconds * bm_aggr(&g_enhanced,1,0.6f,0.4f) * 30)); }
+                                      : (unsigned)ceilf(g_enhanced.reactionSeconds * 30));
+            // human aim: a far target takes longer to line up for the first shot (+0.3 s at 100 m), +-20 % by the bot
+            if (P && g_enhanced.humanStyle) b->stepAt += (unsigned)(dh * 0.003f * 30.0f * (0.8f + 0.4f * human_trait(i)) + 0.5f); }
         fight_posture_start(i, soldier, dh);   // V9: crouch for a far fight
         return 1;
     }
@@ -5049,9 +5185,10 @@ static int fight_tick(int i, BotBrain *b, char *soldier)
         // Caspian V4: pauses long enough for the recoil to settle (V2/V3 x0.45 kept the muzzle high between bursts)
         {   const BMDifficulty *P = bot_profile(i);
             int wp = g_enhanced.weaponHandling ? bm_weapon_pause(infantry_weapon(i),dh) : bm_infantry_pause(is_recon(i), dh);
-            unsigned pause = P ? (unsigned)bm_profile_pause(P, wp) : bm_aggr_frames(&g_enhanced, wp, 0.85f, 0.75f);
-            if (g_enhanced.weaponHandling) pause = (unsigned)bm_weapon_range_pause(infantry_weapon(i), (int)pause, dh);   // AltBotMod Hunt v3: let it settle at range
-            b->stepAt = H->frame + pause; }
+            unsigned pf = P ? (unsigned)bm_profile_pause(P, wp) : bm_aggr_frames(&g_enhanced, wp, 0.85f, 0.75f);
+            if (P && g_enhanced.humanStyle) { pf = (unsigned)(pf * human_cycle(i) + 0.5f); if (pf < 1) pf = 1; }   // human style: this burst's rhythm (0.8 - 1.6 x)
+            if (g_enhanced.weaponHandling) pf = (unsigned)bm_weapon_range_pause(infantry_weapon(i), (int)pf, dh);   // AltBotMod Hunt v3: let it settle at range
+            b->stepAt = H->frame + pf; }
         return 1;
     }
     if (b->step == 3) b->step = 1;
@@ -5076,6 +5213,11 @@ static int fight_tick(int i, BotBrain *b, char *soldier)
         const BMDifficulty *P = bot_profile(i);
         if (P && !recon) burst = (unsigned)bm_profile_burst(P, (int)burst, dh);   // V9: elite bursts x1.7 (still capped by range)
         else if (g_enhanced.aggression > 0 && burst > cap) burst = cap;
+        if (P && g_enhanced.humanStyle) {   // human style: nobody fires like a metronome - every burst and its pause are 0.8 - 1.6 x the weapon's rhythm
+            g_humanCycle[i] = 0.8f + 0.8f * ((float)(rand() % 1000) / 999.0f);
+            burst = (unsigned)(burst * g_humanCycle[i] + 0.5f);
+            if (burst < 1) burst = 1;
+        }
         b->stepAt = H->frame + (burst ? burst : 1);
     }
     return 1;
@@ -6973,13 +7115,13 @@ static int bot_spot(char *spotter, char *target)
     return 1;
 }
 
-// ---- Detection: every 0.5 s each bot looks for enemies in a 120 deg cone with line of sight and spots them ----
+// ---- Detection: every 0.5 s each bot checks a 350 deg view arc (175 deg either side), with world LOS, and spots enemies ----
 #define DETECT_RANGE_V8        (g_enhanced.infantryRange * 1.10f * bm_aggr(&g_enhanced,1,1.2f,1.35f))
 #define DETECT_RANGE_INFANTRY  (bot_profile(i) ? bot_profile(i)->detectRange : DETECT_RANGE_V8)
 #define DETECT_RANGE_VEHICLE   300.0f
 #define DETECT_COS_V8          bm_aggr(&g_enhanced,0.22f,0.0f,-0.2f)     // ~77 / 90 / 102 deg either side of the heading (Aggression 0/1/2)
-#define DETECT_COS_HALF_FOV    (bot_profile(i) ? cosf(bot_profile(i)->fov * 0.01745329f) : DETECT_COS_V8)   // V9: elite 110 deg either side
-#define DETECT_ALL_AROUND      bm_aggr(&g_enhanced,15.0f,28.0f,45.0f)   /* V8: 45 m heard at Aggression 2 */     // closer than this: noticed in any direction (heard)
+#define DETECT_COS_HALF_FOV    (bot_profile(i) ? cosf(bot_profile(i)->fov * 0.01745329f) : DETECT_COS_V8)   // profile FOV is a half-angle; 175 deg leaves only a narrow rear blind spot
+#define DETECT_ALL_AROUND      (g_enhanced.humanStyle ? 8.0f : bm_aggr(&g_enhanced,15.0f,28.0f,45.0f))   /* V8: 45 m heard at Aggression 2; V39 human style: only 8 m (a 160 deg view) */     // closer than this: noticed in any direction (heard)
 #define SPOT_COOLDOWN_FRAMES   (8 * 30)
 static unsigned g_spottedAt[64];          // by player slot: frame of the last bot spot
 static char *g_spottedWho[64];
@@ -6993,13 +7135,28 @@ static void engage_seen(int i, char *t, char *veh, float d)
     BotBrain *b = bot_brain(i);
     char *pl = H->bots[i], *soldier = *(char **)(pl + OFF_PLAYER_SOLDIER);
     if (!soldier || veh || d > (is_recon(i) ? sniper_reach(i) : ENGAGE_RANGE)) return;   // vehicles: rocket_scan (engineers only)
-    int free = b->task == TASK_NONE || b->task == TASK_DEFEND || b->task == TASK_FOLLOW;
-    if (!free && !(b->task == TASK_SUPPLY && d < 20.0f)) return;   // a supply run gives way to an enemy this close
-    if (!is_spotted(t)) return;
-    if (H->frame < g_engageCooldown[i] && (t == g_cooldownWho[i] || H->frame + ENGAGE_COOLDOWN_FRAMES - ENGAGE_BREATHER_FRAMES < g_engageCooldown[i])) return;
-    if (b->task == TASK_SUPPLY) {
-        bot_log("brain: %s drops its supply run - enemy %s at %.0f m", pl + OFF_PLAYER_ONLINE_NAME, t + OFF_PLAYER_ONLINE_NAME, d);
-        b->task = b->prevTask; b->commander = b->prevCommander; b->serviceTarget = NULL; b->step = 0;
+    // A confirmed, unobstructed infantry sighting outranks every non-combat job.
+    // Previously only NONE/DEFEND/FOLLOW (and supply inside 20 m) could enter
+    // combat; bots on revive/repair/cover/rocket/service tasks simply walked on.
+    if (b->task == TASK_FIGHT) return;
+    // detect_tick has already verified a clear world line-of-sight ray to this
+    // target. Do not make combat depend on the separate game spotted-marker API.
+    // Cooldowns prevent repeatedly reacquiring a target after losing it. They
+    // must not suppress a fresh, direct visual contact: seeing an enemy means fight.
+    if (b->task != TASK_NONE && b->task != TASK_DEFEND && b->task != TASK_FOLLOW) {
+        bot_log("brain: %s interrupts %s for visible enemy %s at %.0f m", pl + OFF_PLAYER_ONLINE_NAME,
+                kTaskNames[b->task], t + OFF_PLAYER_ONLINE_NAME, d);
+        // Release a revive reservation before abandoning that job.
+        if (b->task == TASK_REVIVE && b->serviceTarget && player_exists(b->serviceTarget)) {
+            Downed *dn = downed_of(b->serviceTarget);
+            if (dn && dn->medic == i + 1) dn->medic = 0;
+        }
+        b->task = TASK_NONE;
+        b->serviceTarget = NULL;
+        b->commander = NULL;
+        b->step = 0;
+        b->waiting = 0;
+        b->taskUntil = 0;
     }
     int recon = strstr(BOT_ROSTER(pl), "Recon") != NULL;
     // AltBotMod V7: only a flag still being taken holds its bots in place to fight; once it is ours they fight on the
@@ -7012,7 +7169,11 @@ static void engage_seen(int i, char *t, char *veh, float d)
     float teye[3] = {tp[0], tp[1] + 1.6f, tp[2]}, taim[3] = {tp[0], tp[1] + 1.0f, tp[2]}, spot[3];
     int perched = sniper_holding(i);   // V10: on its perch it shoots from there
     int moving = recon && !atFlag && !perched && find_firing_spot(i, soldier, teye, taim, spot);   // (plans the path)
+    // A direct visual contact is stronger than the Rush M-COM focus exception:
+    // stop interacting and defend yourself rather than letting an enemy walk up.
+    g_forceFight = 1;
     start_fight(i, t, 0, recon ? (perched ? "spotted - sniping from high ground" : moving ? "spotted - moving to low cover" : "spotted - firing from here") : advance ? "spotted - advancing" : "spotted");
+    g_forceFight = 0;
     g_fightAdvance[i] = (unsigned char)advance;
     if (atFlag)   // the others holding this flag who can see it engage it too
         for (int j = 0; j < H->botCount; j++) {
@@ -7031,11 +7192,11 @@ static void engage_seen(int i, char *t, char *veh, float d)
     }
 }
 
-// AltBotMod Hunt: frames between two looks round (15 = 0.5 s; nightmare 9 = 0.3 s)
+// AltBotMod Hunt: frames between two looks round (6 = 0.2 s, Mr.Cat's V36 rate; a profile may set its own)
 static unsigned detect_period(int i)
 {
     const BMDifficulty *P = bot_profile(i);
-    unsigned n = P && P->detectSeconds > 0 ? (unsigned)(P->detectSeconds * 30 + 0.5f) : 15;
+    unsigned n = P && P->detectSeconds > 0 ? (unsigned)(P->detectSeconds * 30 + 0.5f) : 6;   // (Mr.Cat V36: 6 = 5 a second, was 15)
     return n < 3 ? 3 : n > 30 ? 30 : n;
 }
 static void detect_tick(int i)
@@ -7607,7 +7768,13 @@ void __cdecl on_process_hit(char *projectile, unsigned char *hit, unsigned *args
             if (g_aimClimb[i] < 0) g_aimClimb[i] = 0;
             if (g_aimClimb[i] > 0.004f) g_aimClimb[i] = 0.004f;
             // Sideways: each impact pulls the yaw correction 25% of the way to cancelling its error.
-            float ev = riseAt - g_aimLanding[i], es = sideAt;
+            // AltBotMod V39: the sideways error the human aim put into this bullet's aim is not the calibration's to cancel
+            float injLat = 0.0f;
+            if (g_enhanced.humanStyle) {
+                unsigned firedAt = H->frame - (unsigned)(reach / BULLET_SPEED * 30.0f + 0.5f);
+                if (g_humanLatAt[i][firedAt & 15] == firedAt) injLat = g_humanLat[i][firedAt & 15];
+            }
+            float ev = riseAt - g_aimLanding[i], es = sideAt - injLat;
             es = es < -1.2f ? -1.2f : es > 1.2f ? 1.2f : es;
             if (learn) g_aimFixS[i] += 0.25f * es / dist;
             if (g_aimFixV[i] < -0.06f) g_aimFixV[i] = -0.06f;
@@ -8384,6 +8551,7 @@ static void level_tick(void)
     }
     H->teamBlueprint[1] = H->teamBlueprint[2] = g_jobBlueprint;
     g_levelReady = 1; g_levelReadyAt = H->frame ? H->frame : 1;
+    bot_log("vehicle: bots will leave vehicles unclaimed for the first 90 seconds so human players can load in");
     for (int t = 1; t <= 2; t++)
         if (!(g_jobHq & t)) bot_log("level: team %d has %s; available owned flags remain usable", t,g_hqCpKnown[t]?"a native HQ but its spawn child was not resolved":"no native HQ anchor");
     if (H->botCount && g_announceLevel) chat_say("[AltBotMod] bots ready on %s (%d flags)", g_level, g_flagCount);
@@ -8478,6 +8646,7 @@ static void squadmate_note_spawn(char *m)
 // After a squad spawn into a vehicle: ride with a bot driver (as a passenger of its drive) or follow a human one.
 static void squadmate_ride(int i, char *veh)
 {
+    if (fleet_human_headstart()) return;
     if (bm_air_profile(vehicle_name(veh)) && air_ride(i, veh)) return;
     for (int j = 0; j < H->botCount; j++)
         if (g_drive[j].phase && g_drive[j].veh == veh && j != i) {
@@ -8596,6 +8765,7 @@ static char *vspawn_pick(char *bot, int team);   // spawn_vehicle.inc
 static int vspawn_board(int i, char *v);
 static char *crew_pick(char *bot, int team)
 {
+    if(fleet_human_headstart())return NULL;
     char *best = NULL; int bestRank = 0;
     for (int j = 0; j < H->botCount; j++) {
         char *m = H->bots[j];
@@ -8628,6 +8798,7 @@ static int crew_spawn(char *bot, int team, const char *name)
 static void squadmate_ride(int i, char *veh);
 static void crew_board_tick(int i)
 {
+    if (fleet_human_headstart()) { g_crewVehicle[i] = NULL; g_crewDriver[i] = 0; return; }
     char *v = g_crewVehicle[i];
     if (!v) return;
     char *pl = H->bots[i], *s = *(char **)(pl + OFF_PLAYER_SOLDIER);
@@ -10004,8 +10175,8 @@ static float gun_range_for(char *veh, int infantry)
 }
 #define GUN_VEHICLE_RANGE      gun_range_for(g_gunVeh[i], 0)
 #define GUN_INFANTRY_RANGE     gun_range_for(g_gunVeh[i], 1)
-#define GUN_BURST_ON           54   // AltBotMod V22: 1.8 s bursts, 0.2 s breaks (V5-V21.1: 1.0 / 0.4 s) - as fast as the gun fires
-#define GUN_BURST_OFF          6
+#define GUN_BURST_ON           15   // AltBotMod V1.3: controlled 0.5 s bursts reduce sustained vehicle-gun recoil and improve grouping
+#define GUN_BURST_OFF          9    // 0.3 s to settle/reacquire before the next burst
 static char *g_gunVeh[MAX_BOTS], *g_gunWeapon[MAX_BOTS], *g_gunTarget[MAX_BOTS], *g_gunTargetVeh[MAX_BOTS];
 static unsigned char g_gunFire[MAX_BOTS], g_gunTries[MAX_BOTS], g_gunNudging[MAX_BOTS];
 static char *g_gunCand[MAX_BOTS][16];
@@ -10325,7 +10496,7 @@ static void gunner_tick_inner(int i)
             // Caspian V5 (review): a TOW / Kornet missile is wire-guided - it flies to wherever the sight is held,
             // so the sight stays on the target with no lead (leading a moving tank made the missile miss ahead).
             // V22: the same for an IFV's missile and a gunship gunner's TV / guided missile.
-        } else if (airframe || profile->kind==BM_AA) {
+        } else if (airframe || profile->kind==BM_AA || isVeh) {  // V38: model acceleration for ground vehicles too, not only aircraft / AA targets
             if (g_gunAirWho[i] != who) { memset(&g_gunAirMotion[i], 0, sizeof g_gunAirMotion[i]); memset(g_gunAccel[i], 0, 12); g_gunAirWho[i] = who; }
             bm_air_motion(&g_gunAirMotion[i], tp, BOT_TICK_DT);
             float rel[3], t = 0;
@@ -10359,17 +10530,26 @@ static void gunner_tick_inner(int i)
     while (err > 3.14159265f) err -= 6.2831853f;
     while (err < -3.14159265f) err += 6.2831853f;
     float perr = atan2f(dy, dh) - asinf(fmaxf(-1.0f, fminf(1.0f, f[1])));
+    if (g_enhanced.humanStyle && !guided) {   // human aim on a mounted gun (HumanVehicleAimErrorMrad 3, aircraft / AA guns HumanAirAimErrorMrad 4): a steady-angle sway and the jolt of a hit
+        float errMrad = (airframe || vprofile->kind == BM_AA) ? g_enhanced.humanAirAimError : g_enhanced.humanVehicleAimError;
+        if (errMrad > 0.0f) {
+            float skill = human_skill(i), ey, ep;
+            if (g_humanAimAt[i] && H->frame - g_humanAimAt[i] > 15) bm_haim_reset(&g_humanAim[i]);   // a gun that was idle: a new take
+            bm_haim_step(&g_humanAim[i], human_dt(i), bm_haim_sigma(errMrad, dh, 0.0f, 0.0f, skill, 0), skill, 0.0f, 0.0f, &ey, &ep);
+            err += ey; perr += ep;
+        }
+    }
     // traverse: negative level raises atan2 yaw; a small floor so the last degrees still move
     float ya = fabsf(err) < 0.0015f ? 0.0f : fmaxf(0.025f, fminf(1.0f, fabsf(err) * 5.0f));
     g_seatYaw[i] = err > 0 ? -ya : ya;
     float pa = fabsf(perr) < 0.0015f ? 0.0f : fmaxf(0.025f, fminf(1.0f, fabsf(perr) * 5.0f));
     g_seatPitch[i] = perr > 0 ? pa : -pa;
-    float tolerance=fmaxf(0.0025f,fminf(0.045f,atanf((isVeh?2.0f:0.35f)/fmaxf(1,dh))));
-    if (slot == 2 && !guided) tolerance = fmaxf(tolerance, atanf(0.6f / fmaxf(1, dh)));   // (a coax machine gun: the spread does the rest)
+    float tolerance=fmaxf(0.0022f,fminf(0.034f,atanf((isVeh?1.20f:0.22f)/fmaxf(1,dh)))); // V38: practical lead-point tolerance; still centre-mass, but avoids never firing at fast movers
+    if (slot == 2 && !guided) tolerance = fmaxf(tolerance, atanf(0.30f / fmaxf(1, dh))); // coax MG: practical grouping without the old wide window
     // AltBotMod V29: a helicopter's door / passenger gun fires once it is within 3 m of the man (5 m of a vehicle), at least
     // 1.7 deg - a minigun's spread does the rest. V22-V28 asked a gun on a swaying, moving helicopter for 0.35 m at the
     // target (0.2 deg at 100 m): the door gunners aimed and never fired.
-    if (airframe && seat > 0 && !guided) tolerance = fmaxf(tolerance, fmaxf(0.03f, atanf((isVeh ? 5.0f : 3.0f) / fmaxf(1, dh))));
+    if (airframe && seat > 0 && !guided) tolerance = fmaxf(tolerance, fmaxf(0.020f, atanf((isVeh ? 2.0f : 1.4f) / fmaxf(1, dh)))); // V1.3: tighter door-gunner grouping while allowing for aircraft sway
     int onTarget = airLeadOk && fabsf(err)<tolerance && fabsf(perr)<tolerance && gun_can_see(gp,sight,isVeh);
     if (driverWeapon && slot == 1 && vprofile->kind == BM_TANK && dh < 6.0f) onTarget = 0;   // V23: only a tank's main gun right on top of it (V5-V22: no driver gun under 15 m - a man in front of a tank was never shot; the coax fires at any range)
     unsigned ph = (H->frame - g_gunBurstAt[i]) % (GUN_BURST_ON + GUN_BURST_OFF);
@@ -10627,7 +10807,7 @@ static void hq_learn_tick(void)
 
 // ---- Close threat: an enemy soldier within CLOSE_THREAT_RANGE with a line to the bot is dealt with first, whatever
 // the bot was doing (fighting someone further away, a supply run, a revive, cover, a rocket...). Checked 5x a second. ----
-#define CLOSE_THREAT_RANGE     10.0f
+#define CLOSE_THREAT_RANGE     (g_enhanced.humanStyle ? 15.0f : 70.0f)  // V38: emergency visual threat scan (any direction); V39 human style: 15 m
 static void close_threat_tick(int i)
 {
     char *pl = H->bots[i], *s = *(char **)(pl + OFF_PLAYER_SOLDIER), *pm = player_manager();
@@ -12618,7 +12798,6 @@ static int boat_lane_to(int f, const float *from);   // AltBotMod V22 (trace_nat
 // AltBotMod V16: a boat only across water. V22: or when a saved boat lane runs from near here to within 150 m of the flag and
 // the flag is 300 m+ away (a river: Armored Shield had its RHIB and its two recorded lanes, and bots took the road)
 #define FLEET_BOAT_NOT_NEEDED(v,from,f) (vehicle_is_boat(v) && !boat_trip_needed(from,objective_pos(f)) && !boat_lane_to(f,from))   // (offline harnesses: 0)
-#define FLEET_ROUND_RUSH (g_levelReadyAt && H->frame-g_levelReadyAt<120*30)   // AltBotMod V23: the round-start rush to the vehicles
 #include "fleet_native.inc"
 #include "spawn_vehicle.inc"
 #include "passenger_native.inc"
@@ -12690,6 +12869,10 @@ static void enhanced_load_config(void)
         next.driverWeapons = 0;
     }
     g_enhanced = next;
+    bm_human_style_apply(&g_enhanced);   // AltBotMod V39: the human profile (reaction, ranges, view, strafe) from the settings just read
+    if (g_enhanced.humanStyle) bot_log("enhanced: HumanStyle on - aim error %.1f mrad (sniper %.1f, vehicles %.1f / %.1f), reaction %.2f + %.2f s, view %.0f deg, shoot-back %.0f m, strafe %.2f, side steps %d",
+        g_enhanced.humanAimError, g_enhanced.humanSniperAimError, g_enhanced.humanVehicleAimError, g_enhanced.humanAirAimError, g_enhanced.humanReaction, g_enhanced.humanFirstShot,
+        g_enhanced.humanFov, g_enhanced.humanShootBack, g_enhanced.humanStrafe, g_enhanced.sideSteps);
     memset(g_enhancedSteer, 0, sizeof g_enhancedSteer);
     if (next.armored || next.driverWeapons) bot_log("enhanced: experimental armoured vehicle behavior enabled; validate in game");
 }
@@ -12817,6 +13000,9 @@ static void enhanced_forget(int i)
     FORGET(g_huntFails);FORGET(g_huntAngle);FORGET(g_huntGoal);FORGET(g_huntPlanAt);FORGET(g_huntScanAt);FORGET(g_huntCooldown);FORGET(g_huntRoutedAt);
     FORGET(g_snapOn);FORGET(g_snapYaw);FORGET(g_snapPitch);FORGET(g_snapStart);FORGET(g_snapHist);FORGET(g_snapPHist);FORGET(g_snapSince);   // AltBotMod Hunt v2
     FORGET(g_aimWeapon);FORGET(g_aimFitFor);   // AltBotMod Hunt v3: the gun of each bot's life and fit
+    FORGET(g_fightRetaliate);   // (Hunt v4 merge: Mr.Cat V36-V39 per-bot state - a bot that leaves must not hand its aim error, lead or grudge to the next)
+    FORGET(g_humanAim);FORGET(g_humanAimAt);FORGET(g_humanLat);FORGET(g_humanLatAt);FORGET(g_humanPrevPos);FORGET(g_humanPrevAt);FORGET(g_humanSpeed);
+    FORGET(g_humanTrack);FORGET(g_humanTrackAt);FORGET(g_humanTrackWho);FORGET(g_humanRealVel);FORGET(g_humanCycle);
     FORGET(g_gliding);
     FORGET(g_grenadesThisLife);
     FORGET(g_gunAimH);
@@ -12941,7 +13127,7 @@ static void enhanced_level_reset(void)
     memset(g_vehicleApproach,0,sizeof g_vehicleApproach);
     memset(&g_director,0,sizeof g_director);memset(g_directorIdentity,0,sizeof g_directorIdentity);
     g_directorAt=g_directorSig=0;g_directorEpoch=0;
-    g_fleetPriorityUntil=0;memset(g_deploymentIdle,0,sizeof g_deploymentIdle);
+    memset(g_deploymentIdle,0,sizeof g_deploymentIdle);
     memset(g_activity,0,sizeof g_activity);g_activityProbeFrame=g_activityRetireAt=0;
     g_navVehicleCoverageEpoch=-1;
     memset(g_fleetRouteFailure,0,sizeof g_fleetRouteFailure);
@@ -13323,7 +13509,8 @@ __declspec(dllexport) void botmod_tick(void)
         }
         g_where = "detect_tick";
         if (!g_air[i].phase) {
-            if ((H->frame + i * 2) % detect_period(i) == 0) detect_tick(i);   // (AltBotMod Hunt: the profile's rate)
+            // Visual contact is checked five times per second (Mr.Cat V36; was twice) - or at the profile's own rate (AltBotMod Hunt)
+            if ((H->frame + i * 2) % detect_period(i) == 0) detect_tick(i);
             else if ((H->frame + i) % 6 == 0) close_threat_tick(i);
         }
         activity_tick(i);

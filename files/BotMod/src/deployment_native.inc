@@ -84,6 +84,7 @@ static void deployment_tick(void)
 }
 static int deployment_spawn(char *bot)
 {
+    if(fleet_human_headstart())return 0;
     int i=bot_index(bot),team=player_team(bot);
     if(i<0 || team<1 || team>2 || !level_ready() || !g_enhanced.driving || g_driveOff ||
        !g_vehInput || !bot_brain(i)->enabled)return 0;

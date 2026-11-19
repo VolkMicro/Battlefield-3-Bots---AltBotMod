@@ -1,0 +1,26 @@
+AltBotMod V37 - long-range infantry detection and direct-pursuit recovery
+
+Source changes in this package:
+
+1. Infantry perception / engagement ranges
+   - Difficulty profiles now detect infantry to 500 m and begin an engagement at 400 m.
+   - The configured fight range is 400 m, but the weapon-family max-range and range-factor checks remain in force.
+   - This does not make shotguns or PDWs magically accurate at rifle distances; those bots close to their weapon's usable range.
+
+2. Emergency close-threat acquisition
+   - The additional close-threat scan now covers 35 m rather than 10 m.
+   - It still requires a living enemy soldier and a clear chest/head line of sight.
+
+3. Long-range infantry firing window
+   - The centre-mass aim window is modestly widened to avoid bots tracking a distant target indefinitely without firing.
+   - Weapon recoil, burst pacing, projectile leading, and line-of-sight checks remain active.
+
+4. Direct-pursuit movement recovery
+   - Navigation mode 4 previously returned early without a stuck watchdog.
+   - It now detects 1.5 seconds without meaningful movement, attempts a routed approach, backs off / sidesteps, and falls back to the normal navigation controller after repeated failures.
+   - This is intended to prevent bots from continuously pushing into an obstacle while turning toward a target.
+
+Validation limits:
+   - Source edits and archive integrity were checked.
+   - A native Windows 32-bit DLL build and in-game multiplayer test were not possible in this environment.
+   - Verify on a live server and review BotMod logs for 'direct pursuit blocked', 'routed approach', and 'normal navigation recovery'.

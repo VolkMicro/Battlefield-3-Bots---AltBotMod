@@ -23,7 +23,7 @@ static int vspawn_rank(char *v)
 }
 static char *vspawn_pick(char *bot, int team)
 {
-    if (!mode_uses_vehicles() || !level_ready() || !g_enhanced.driving || g_driveOff || !g_vehInput || g_roundCleanup) return NULL;
+    if (fleet_human_headstart() || !mode_uses_vehicles() || !level_ready() || !g_enhanced.driving || g_driveOff || !g_vehInput || g_roundCleanup) return NULL;
     if (team < 1 || team > 2) return NULL;
     const float *own = g_hqCpKnown[team] ? g_hqCpPos[team] : g_hqPos[team];
     const float *other = g_hqCpKnown[3 - team] ? g_hqCpPos[3 - team] : g_hqPos[3 - team];

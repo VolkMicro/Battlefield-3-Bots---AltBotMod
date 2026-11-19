@@ -39,7 +39,7 @@ int main(void){
  }
  puts("PASS: actual unsquadded bots on BOTH teams get a valid vehicle objective; natural deaths choose a validated owned spawn near a distant tank, with contested/enemy-team spawn rejection and no-HQ defender support");
  bm_defaults(&g_enhanced);assert(g_enhanced.groundDriversPerTeam==16&&g_enhanced.air.pilotsPerTeam==6&&g_enhanced.returnMeters==3000);
- for(int total=1;total<=64;total++){H->frame=100000;g_fleetPriorityUntil=100;assert(fleet_capacity(total)==total);}
+ for(int total=1;total<=64;total++){H->frame=100000;g_levelReadyAt=0;assert(fleet_capacity(total)==total);}
  assert(bm_set(&g_enhanced,"GroundDriversPerTeam","32")&&g_enhanced.groundDriversPerTeam==32);
  puts("PASS: default 16 ground drivers and six pilots per team; optional 32-driver setting accepted; every bot remains eligible for fleet duty after the opening minute");return 0;
 }

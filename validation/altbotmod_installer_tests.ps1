@@ -135,8 +135,8 @@ try {
     Assert ([IO.File]::ReadAllText($bat3) -ceq "set GAMEPORT=25302`r`nset PLAYERS=64`r`nstart bf3_server_Final.exe -maxPlayers %PLAYERS%`r`n") 'AltBotMod V34: its _StartServer3.bat PLAYERS=32 is put back to 64'
     Assert ((Hash (Join-Path $srv 'xinput9_1_0.dll')) -eq $loaderHash) 'Loader installed'
     Assert ((Hash (Join-Path $srv 'xinput9_1_0_orig.dll')) -eq $stockHash) 'Original XInput retained'
-    Assert ([IO.File]::ReadAllText($active).StartsWith($existingSettings.Replace('JetAreaMarginMeters=600', 'JetAreaMarginMeters=900').Replace('Difficulty=elite', 'Difficulty=nightmare'))) 'Existing enabled settings preserved (V34: the old jet-area default moved; Hunt: elite -> nightmare)'
-    Assert (@([IO.File]::ReadAllLines($active) | Where-Object { $_ -match '^Difficulty=' }).Count -eq 1) 'AltBotMod Hunt: one Difficulty line (moved in place, not added again)'
+    Assert ([IO.File]::ReadAllText($active).StartsWith($existingSettings.Replace('JetAreaMarginMeters=600', 'JetAreaMarginMeters=900'))) 'Existing enabled settings preserved (V34: the old jet-area default moved; a chosen Difficulty stays as it was)'
+    Assert (@([IO.File]::ReadAllLines($active) | Where-Object { $_ -match '^Difficulty=' }).Count -eq 1) 'one Difficulty line (the chosen one kept, not added again)'
     Assert ([IO.File]::ReadAllText($active).Contains('ReturnToBase=1')) 'Missing deployment return setting added'
     Assert ([IO.File]::ReadAllText($active).Contains('PassengerTakeover=1')) 'Missing takeover setting added'
     Assert ([IO.File]::ReadAllText((Join-Path $bot 'admins.txt')) -eq 'TestPlayer') 'Admins preserved'
@@ -165,7 +165,7 @@ try {
     Assert ([IO.File]::ReadAllText($active).Contains('Learning=1') -and [IO.File]::ReadAllText($active).Contains('LearnFromPlayers=1')) 'AltBotMod V21: the learning settings added to the active settings (on)'
     Assert ((Hash (Join-Path $bot 'ServerControl/Learning-Core.ps1')) -eq (Hash (Join-Path $script:Pkg 'ServerControl/Learning-Core.ps1')) -and (Hash (Join-Path $bot 'ServerControl/Learning-Page.ps1')) -eq (Hash (Join-Path $script:Pkg 'ServerControl/Learning-Page.ps1'))) 'AltBotMod V21: the Learning page and its core installed with Server Control'
     Assert ([IO.File]::ReadAllText((Join-Path $bot 'INSTALLATION.txt')).Contains('BotMod_learned')) 'AltBotMod V21: the installed note says where the learning is'
-    Assert ([IO.File]::ReadAllText($active).Contains('SideSteps=1')) 'AltBotMod V14: the side-step setting added to the active settings'
+    Assert ([IO.File]::ReadAllText($active).Contains('SideSteps=3')) 'AltBotMod V14: the side-step setting added to the active settings (V39 default: 3, step and shoot)'
     Assert ([IO.File]::ReadAllText($active).Contains('RouteActions=1') -and [IO.File]::ReadAllText($active).Contains('ReconBeacons=1')) 'AltBotMod V15: the route-action and beacon settings added to the active settings'
     Assert ([IO.File]::ReadAllText($active).Contains('GadgetVariety=1') -and [IO.File]::ReadAllText($active).Contains('C4Attacks=1') -and [IO.File]::ReadAllText($active).Contains('LockOnLaunchers=1') -and [IO.File]::ReadAllText($active).Contains('BotTicketCost=0.5') -and [IO.File]::ReadAllText($active).Contains('VehicleCountermeasures=1') -and [IO.File]::ReadAllText($active).Contains('VehicleDamageTaken=1') -and [IO.File]::ReadAllText($active).Contains('VehicleDamageDealt=1')) 'AltBotMod V16.2: the gadget, C4, lock-on, ticket, smoke and vehicle damage settings added to the active settings'
     Assert (@(Get-ChildItem -LiteralPath (Join-Path $srv 'BotMod_traces') -Filter '*.map').Count -ge 176 -and (Test-Path -LiteralPath (Join-Path $srv 'BotMod_traces/MP_007_RushLarge0.map'))) 'AltBotMod V15: every recorded route file installed (Rush, Squad Rush, Squad DM, Domination, Gun Master ...)'
@@ -238,7 +238,7 @@ try {
     Assert ([IO.File]::ReadAllText((Join-Path $script:BackupDir 'BotMod/enhanced.ini')) -ceq $presetOriginal) 'First backup preserves original before missing-option migration and preset'
     Assert ([IO.File]::ReadAllText($customPort).Contains('TankSpeedMps=20')) 'Higher custom speed preserved'
     Assert ([IO.File]::ReadAllText($customPort).Contains('InfantryEngageMeters=210')) 'Custom combat range preserved'
-    foreach ($setting in @('LightSpeedMps=34','BoatSpeedMps=22','IfvSpeedMps=20','ArmorRepairHealthFraction=0.35','ArmorTacticMeters=70','ConvoySpacingMeters=14','InfantryEngageMeters=260','ReconEngageMeters=450','ArmorEngageMeters=800','WeaponVariety=1','WeaponAttachments=1')) {
+    foreach ($setting in @('LightSpeedMps=34','BoatSpeedMps=22','IfvSpeedMps=20','ArmorRepairHealthFraction=0.35','ArmorTacticMeters=70','ConvoySpacingMeters=14','InfantryEngageMeters=70','ReconEngageMeters=150','ArmorEngageMeters=375','WeaponVariety=1','WeaponAttachments=1')) {
         Assert ($preset.Contains($setting)) "Mobility/combat defaults installed: $setting"
     }
     $presetHash=Hash $active

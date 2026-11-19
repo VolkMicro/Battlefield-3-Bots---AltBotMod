@@ -229,8 +229,8 @@ try {
     $rows = Get-BmEffectiveSettings $srv $inst[0]; $by = @{}; foreach ($r in $rows) { $by[$r.Setting.Key] = $r }
     Assert ($rows.Count -eq $script:BmSettings.Count -and $rows.Count -ge 45) "every setting listed ($($rows.Count))"
     Assert ($by['BotDamage'].Value -eq '1.25' -and $by['BotDamage'].Source -eq 'all servers') 'the last line for a key wins, comments stripped (as in the core)'
-    Assert ($by['SniperEngageMeters'].Value -eq '550' -and $by['SniperEngageMeters'].Source -eq 'default') 'an out-of-range value in the file is shown as the default the core falls back to'
-    Assert ($by['Difficulty'].Value -eq 'elite' -and $by['Driving'].Value -eq '1' -and $by['ArmoredVehicles'].Value -eq '0') 'defaults'
+    Assert ($by['SniperEngageMeters'].Value -eq '150' -and $by['SniperEngageMeters'].Source -eq 'default') 'an out-of-range value in the file is shown as the default the core falls back to (V39: 150 m)'
+    Assert ($by['Difficulty'].Value -eq 'normal' -and $by['Driving'].Value -eq '1' -and $by['ArmoredVehicles'].Value -eq '0') 'defaults (V39: normal)'
     $rows2 = Get-BmEffectiveSettings $srv $inst[2]; $by2 = @{}; foreach ($r in $rows2) { $by2[$r.Setting.Key] = $r }
     Assert ($by2['Difficulty'].Value -eq 'elite' -and $by2['Difficulty'].Source -eq 'this server') "a server's own file wins for that server ($($by2['Difficulty'].Source))"
     $S = @{}; foreach ($x in $script:BmSettings) { $S[$x.Key] = $x }

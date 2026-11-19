@@ -174,6 +174,7 @@ static int ray_cast(const float *from,const float *to,float *hit,float *normal)
     hit[0]=from[0]; hit[1]=0; hit[2]=from[2]; return 1;
 }
 #include "../files/BotMod/src/local_order.h"
+static unsigned g_levelReadyAt;   // (core.c; Mr.Cat V39: the human vehicle head-start counts from it - 0 here: none)
 #include "../files/BotMod/src/fleet_state.h"
 #include "../files/BotMod/src/air_native.inc"
 #include "../files/BotMod/src/fleet_native.inc"
@@ -193,7 +194,7 @@ static void reset(const char *name,int seats)
     memset(g_deployActive,0,sizeof g_deployActive);memset(g_deployChoice,0,sizeof g_deployChoice);
     memset(g_paths,0,sizeof g_paths);memset(g_localFlag,0,sizeof g_localFlag);memset(g_localUntil,0,sizeof g_localUntil);memset(g_localOrder,0,sizeof g_localOrder);
     padWater=padObstructed=diagnosticChanges=routeCancels=0;invalidSpawn=NULL;memset(validatedHq,0,sizeof validatedHq);g_airLandingProbeFrame=g_airPickupProbeFrame=0;
-    g_fleetPriorityUntil=0;
+    g_levelReadyAt=0;
     memset(g_hqPos,0,sizeof g_hqPos); memset(g_hqCpKnown,0,sizeof g_hqCpKnown);
     g_flagCount=1;badVehicle=NULL; badUntil=0; allowSwitch=allowPlan=budgetAvailable=1; planDeferred=0; vehicleCount=1;g_flagCount=1;
     host.frame=990; host.botCount=4; humanNearby=0; allowEnter=engineReady=1; exits=claims=0;
@@ -441,7 +442,7 @@ int main(void)
     for(int i=0;i<4;i++){assert(fleet_reserve(i,soldiers[i]));assert(g_fleet[i].vehicle==vehicles[i]);fleet_tick(i);assert(g_drive[i].phase || g_air[i].phase);}
     assert(!fleet_reserve(4,soldiers[4])); // half the team stays on foot
     // Opening priority can use all four classes even with four bots per team.
-    memset(g_fleet,0,sizeof g_fleet);memset(g_drive,0,sizeof g_drive);memset(g_air,0,sizeof g_air);host.botCount=4;g_fleetPriorityUntil=H->frame+60*30;
+    memset(g_fleet,0,sizeof g_fleet);memset(g_drive,0,sizeof g_drive);memset(g_air,0,sizeof g_air);host.botCount=4;g_levelReadyAt=0;
     for(int i=0;i<4;i++){assert(fleet_reserve(i,soldiers[i]));assert(g_fleet[i].vehicle==vehicles[i]);fleet_tick(i);assert(g_drive[i].phase || g_air[i].phase);}
     // Both teams dispatch a tank and a chopper from their own deployment.
     reset("M1Abrams",3);g_enhanced.armored=g_enhanced.returnToBase=1;g_enhanced.air.jets=0;
@@ -469,7 +470,7 @@ int main(void)
     air_transport_job(0,vehicle.xf+12);assert(g_air[1].phase==AIR_WALK&&g_air[1].pickup);
     air_tick(1);assert(playerSeats[1]>=g_air[0].profile->firstPassenger&&g_air[1].phase==AIR_RIDE&&free_seat_count((char*)&vehicle)>=1);
     assert(air_cargo(&g_air[0])==1);
-    reset("AH1Z",2);H->botCount=8;g_enhanced.returnToBase=1;g_enhanced.groundDriversPerTeam=8;g_enhanced.air.pilotsPerTeam=6;g_fleetPriorityUntil=H->frame+1800;
+    reset("AH1Z",2);H->botCount=8;g_enhanced.returnToBase=1;g_enhanced.groundDriversPerTeam=8;g_enhanced.air.pilotsPerTeam=6;g_levelReadyAt=0;
     Vehicle pool[8];vehicleCount=8;
     for(int i=0;i<8;i++){
         H->bots[i]=players[i];H->botInput[i]=inputs[i];*(int*)(players[i]+8)=1;*(float**)(players[i]+OFF_PLAYER_SOLDIER)=soldiers[i];memset(soldiers[i],0,12);soldiers[i][3]=100;brains[i].enabled=1;

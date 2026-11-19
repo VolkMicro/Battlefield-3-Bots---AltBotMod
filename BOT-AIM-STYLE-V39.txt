@@ -1,0 +1,65 @@
+AltBotMod human style (V39 settings, AltBotMod Hunt v4 aim model): bots that aim, react and move like people
+==============================================================================================================
+
+The BotModCore.dll in files\server is built from these sources (Hunt v4). After installing, the server log BotMod_<port>.log shows
+"enhanced: HumanStyle on - aim error 6.0 mrad ...". If that line is missing, the old DLL is still loaded.
+
+What it does (HumanStyle=1, the default; HumanStyle=0 gives the V38 gunfight back)
+----------------------------------------------------------------------------------
+Aim (files\BotMod\src\enhanced.c bm_haim_*, core.c fight_tick / human_lead_point)
+  Three offsets are added to the bot's perfect aim:
+  * Sway: a slow random wander around the target that always drifts back (an Ornstein-Uhlenbeck process, 0.45 s), sideways one
+    standard deviation of the bot's error, up and down three quarters of that.
+  * Settle: the swing onto a new target ends past it (3 times in 4) or short of it by 4 - 20 % of the swing (at most 0.08 rad);
+    the miss dies away in 0.15 - 0.35 s.
+  * Jolt: a hit throws the aim up 9 - 15 mrad and 3 - 8 mrad to a side; gone in about a second.
+  The size: HumanAimErrorMrad (6) at 25 m, sniper rifles HumanSniperAimErrorMrad (3). Part of it is a fixed miss in metres and part a fixed
+  angle, so the miss grows with the distance, but slower than it: one standard deviation is 15 cm at 25 m, 21 cm at 50 m, 35 cm at 100 m.
+  Walking makes it larger (x1.5 at 4 m/s), and so does a target crossing the view (x1.5 at 0.25 rad/s).
+  * Every bot has its own steadiness, the same all session (from its name): 0.5 x .. 1.5 x the error (HumanAimSkillSpread 0.5).
+  * Leading a moving target, the bot sees where it is now, but takes in its motion a reaction time late (0.1 - 0.25 s by the bot): a
+    target that turns or stops is led the old way for a moment. A new target is not led until its motion has been watched.
+  * During a burst the bot holds down only part of the recoil climb: the steadiest 90 %, the shakiest 50 % (HumanRecoilControlBest / Worst).
+  * Snipers aim for the chest.
+  * The impact calibration leaves the added sideways error alone (it learns the gun and camera offset, not the person's error).
+  * Mounted guns (tank, IFV, boats, helicopter and jet gunners, AA): a steady-angle sway of 3 mrad (aircraft / AA 4 mrad) and the jolt
+    of a hit. Guided missiles are left alone.
+Reaction and fire
+  * 0.25 s to notice + 0.2 s before the first shot + 0.3 s per 100 m of distance.
+  * The weapon's own burst and pause, each burst 0.8 - 1.6 x: nobody fires like a metronome.
+  * Every level throws a grenade at an enemy that ducked out of sight.
+Perception and range
+  * Infantry notice and fight to 70 m (InfantryEngageMeters), recon and snipers 150 m, armour 375 m (armour against soldiers 150 m).
+  * A 160 degree view; an enemy within 8 m is heard from any side. The emergency close-threat scan reaches 15 m.
+  * A bot that was hit shoots back out to 150 m (HumanShootBackMeters; snipers 400 m), even where it would not start a fight.
+Movement
+  * SideSteps=3 (step and shoot): every 2.5 s a bot steps sideways for 1 s (random side) at HumanStrafe 0.6, then stands 1.5 s.
+  * No hops in a fight or on the run (a jump only to get past an obstacle; the stuck-jump logic is unchanged).
+  * About half the bots crouch to shoot.
+Damage
+  * BotDamage 1.0, Aggression 1, Difficulty normal: with HumanStyle on every level plays the same human profile, so the level matters
+    only with HumanStyle=0. With Hunt=1 that profile also closes in, chases 20 s and does not run for cover from an enemy within 40 m;
+    nightmare adds quick, irregular side steps within 20 m.
+
+Settings (files\BotMod\enhanced.ini, also on the Combat page of Server Control)
+-------------------------------------------------------------------------------
+  HumanStyle=1               HumanAimErrorMrad=6            HumanSniperAimErrorMrad=3
+  HumanVehicleAimErrorMrad=3 HumanAirAimErrorMrad=4         HumanAimSkillSpread=0.5
+  HumanRecoilControlBest=0.9 HumanRecoilControlWorst=0.5    HumanReactionSeconds=0.25
+  HumanFirstShotSeconds=0.2  HumanFovDegrees=160            HumanShootBackMeters=150
+  HumanSniperShootBackMeters=400                            HumanStrafe=0.6          SideSteps=3
+Quick tuning: bots too accurate -> raise HumanAimErrorMrad (8, 10); too weak -> lower it (4, 3); 0 = a perfect aim.
+
+An EXISTING enhanced.ini is kept by the installer; it adds the settings it lacks with these defaults. Values you changed by hand stay.
+
+Rebuild
+-------
+1. Install 32-bit MinGW so that C:\mingw32\bin\gcc.exe exists.
+2. Open a Command Prompt in the extracted folder and run:  files\BotMod\build.bat
+3. It prints "Built out\xinput9_1_0.dll and out\BotModCore.dll" and copies both DLLs to files\server.
+4. Stop the BF3 server, back up its current DLLs, run Install-AltBotMod.bat (or copy the two DLLs), start the server.
+
+Checks
+------
+validation\altbotmod_human_style_checks.py   settings, wiring in core.c, and a native test of the aim model (needs gcc)
+validation\hunt_checks.py                     the human profile with the Hunt and nightmare

@@ -1,0 +1,30 @@
+AltBotMod - Immediate Engagement + 90-Second Vehicle Head-Start + Improved Accuracy
+
+This is a source package. It does not contain newly compiled Windows DLLs.
+
+Accuracy update (V36): infantry firing alignment is tightened by 28%; land/boat vehicle gunners,
+aircraft door gunners, helicopter pilots and jet pilots also use tighter firing-alignment windows.
+Weapon spread, recoil, projectile travel and target movement still affect actual hit probability.
+
+Vehicle availability: bots do not claim or board vehicles for the first 90 seconds
+(1 minute 30 seconds) after the level becomes ready. This leaves ground vehicles and aircraft
+available while a human player is loading into the server. Bots continue fighting
+and capturing objectives on foot during this period.
+
+To rebuild on the BF3 server PC:
+1. Extract the whole ZIP.
+2. Ensure 32-bit MinGW is installed and gcc.exe is available at C:\mingw32\bin\gcc.exe.
+3. Open Command Prompt in the extracted folder and run:
+   files\BotMod\build.bat
+4. A successful build prints:
+   Built out\xinput9_1_0.dll and out\BotModCore.dll
+   The script also copies both DLLs into files\server.
+
+The updated source is in files\BotMod\src. The build script compiles both DLLs;
+no manual source compilation is required. The server must be stopped before replacing
+its DLLs. Keep a backup of the current server DLLs before installing the rebuilt ones.
+
+The included validation/altbotmod_immediate_engagement_checks.py checks the combat
+priority, detection cadence, firing tolerance and 300/300/350 m profile settings.
+The validation/altbotmod_vehicle_headstart_checks.py checks that every bot vehicle
+acquisition path respects the 90-second human head-start.

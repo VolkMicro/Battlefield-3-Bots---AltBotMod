@@ -59,7 +59,7 @@ typedef struct { int commander; } Brain; static Brain brains[MAX_BOTS]; static B
 typedef struct { int mode; } Nav; static Nav navs[MAX_BOTS]; static Nav *bot_nav(int i) { return &navs[i]; }
 static char *g_crewVehicle[MAX_BOTS], *g_lastSpawnedBot[MAX_BOTS]; static unsigned g_lastSpawnedAt[MAX_BOTS];
 static int g_roundCleanup, g_vehInput = 1, refuse;
-static int mode_uses_vehicles(void) { return 1; } static int level_ready(void) { return 1; }
+static int mode_uses_vehicles(void) { return 1; } static int level_ready(void) { return 1; } static int fleet_human_headstart(void) { return 0; }
 static void nav_cancel_path(int i) { (void)i; }
 static char logline[256]; static void bot_log(const char *f, ...) { (void)f; snprintf(logline, sizeof logline, "%s", f); }
 /* players: name at 0, soldier pointer at 16, team at 40, bot flag at 44 */
@@ -200,11 +200,11 @@ int main(void)
     assert 'if(1){(void)i;(void)d;(void)vp;return 0;}' in gc
     assert 'throttle = bm_drive_throttle(vwant, d->speed, bm_armored(profile), ae);' in core   # (V29: no smoothed target - V23's 8 m/s per second climb is gone)
     assert 'float reach = (boat ? 100.0f : 90.0f) + alt * 30.0f;' in trace and '#define TRACE_MIN_TRIP        8.0f' in trace
-    assert 'int rush=FLEET_ROUND_RUSH;' in fleet and '#define FLEET_ROUND_RUSH (g_levelReadyAt && H->frame-g_levelReadyAt<120*30)' in core and 'g_levelReadyAt = H->frame ? H->frame : 1;' in core
+    assert 'static int fleet_human_headstart(void)' in fleet and '#define FLEET_HUMAN_HEADSTART_FRAMES (90u * 30u)' in fleet and 'g_levelReadyAt = H->frame ? H->frame : 1;' in core
     assert 'float kc = distance > 20 ? fminf(k, 1.25f) : k;' in en
     assert '#define BM_ENHANCED_VERSION "AltBotMod V35.2 - New Ground"' in eh
     print('PASS: V23 driving - sensors look down the route, no armour slow-down for targets, speed back at 8 m/s per second, saved roads joined from 90 m, routes on foot from 8 m, '
-          'a round-start rush to every vehicle; short bursts at range; version V23')
+          'the opening vehicle rush superseded by a human head-start; short bursts at range; version V23')
 
 if __name__ == '__main__':
     main()

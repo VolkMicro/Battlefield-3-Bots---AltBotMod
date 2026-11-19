@@ -1,0 +1,20 @@
+AltBotMod V38 - pursuit recovery, moving vehicle lead, 70 m emergency threat scan
+
+Changes in files/BotMod/src/core.c:
+
+1) Emergency threat scan
+   CLOSE_THREAT_RANGE is now 70 m (was 35 m). The scan still requires a valid enemy soldier and a clear line of sight to at least one chest/head sample; it does not make bots see through walls.
+
+2) Stationary / spinning recovery
+   Direct-pursuit watchdog now declares no-progress after 1.0 s instead of 1.5 s. It first tries a checked route, then backs off and sidesteps, and after repeated failures hands control to the ordinary navigation recovery path. General stuck handling starts its fence/crouch/teammate/straight-walk recovery after 0.8 s instead of 1.0 s. This is a recovery improvement, not a guarantee that every map obstruction is solvable.
+
+3) Vehicle gunner tracking
+   Unguided gunners now estimate acceleration for ground-vehicle targets as well as aircraft / AA targets and apply bounded acceleration compensation to the intercept point. Guided missiles remain sight-guided and are intentionally not led. The firing alignment window is modestly widened to account for moving-target prediction and platform sway while retaining centre-mass aiming.
+
+Validation performed:
+- stability_navigation_checks.py: passed
+- ground_recovery_checks.py: passed
+- combat_walk_fire_checks.py: passed
+- altbotmod_v352_checks.py: passed
+- combat_mobility_checks.py: blocked by an existing policy assertion (expected infantryRange=260 / reconRange=450); this failure is unrelated to the V38 edits.
+- Native 32-bit Windows DLL build and live Battlefield 3 test: not performed in this environment.

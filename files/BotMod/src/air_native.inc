@@ -327,6 +327,7 @@ static void air_target(int i,BMAirObservation *o)
 
 static int air_claim(int i,char *veh,int pilot,int flag)
 {
+    if(fleet_human_headstart())return 0;
     char *s=*(char **)((char *)H->bots[i]+OFF_PLAYER_SOLDIER);
     const BMAirProfile *p=bm_air_profile(vehicle_name(veh));
     float *xf=vehicle_xf(veh);
@@ -383,6 +384,7 @@ static void air_invite(int pilot)
 }
 static void air_consider(int i)
 {
+    if(fleet_human_headstart())return;
     char *pl=H->bots[i], *s=*(char **)(pl+OFF_PLAYER_SOLDIER);
     BotBrain *b=bot_brain(i);
     if (g_driveOff || !g_enhanced.driving || !g_vehInput || !level_ready() || !s || !b->enabled ||

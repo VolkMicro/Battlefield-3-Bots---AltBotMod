@@ -178,10 +178,11 @@ static void hunt_director_tick(void)
                 char *pl = a0[k], *s = pl && !is_bot(pl) ? *(char **)(pl + OFF_PLAYER_SOLDIER) : NULL;
                 if (!s || !(*(float *)(s + OFF_SOLDIER_HEALTH) > 0)) continue;
                 announced = g_roundEpoch;
+                const char *style = g_enhanced.humanStyle && g_enhanced.difficulty > 0 ? ", human aim" : "";   // (v4: Mr.Cat's human style on every level)
                 if (g_enhanced.hunt && g_enhanced.huntersPerPlayer > 0)
-                    chat_say("[AltBotMod] Hunt v2: up to %d bots hunt each player, difficulty %s, snap aim %s", g_enhanced.huntersPerPlayer,
-                             bm_difficulty_name(g_enhanced.difficulty), snap_short());
-                else chat_say("[AltBotMod] Hunt v2: hunting off, difficulty %s, snap aim %s", bm_difficulty_name(g_enhanced.difficulty), snap_short());
+                    chat_say("[AltBotMod] Hunt v4: up to %d bots hunt each player, difficulty %s%s, snap aim %s", g_enhanced.huntersPerPlayer,
+                             bm_difficulty_name(g_enhanced.difficulty), style, snap_short());
+                else chat_say("[AltBotMod] Hunt v4: hunting off, difficulty %s%s, snap aim %s", bm_difficulty_name(g_enhanced.difficulty), style, snap_short());
                 bot_log("hunt: announced in the chat - hunt %s (%d per player), difficulty %s, snap aim %s", g_enhanced.hunt ? "on" : "off",
                         g_enhanced.huntersPerPlayer, bm_difficulty_name(g_enhanced.difficulty), snap_state_text());
                 break;

@@ -28,8 +28,10 @@ void bm_defaults(BMConfig *c)
     c->tankMaxSpeed = 16; c->ifvMaxSpeed = 20;
     c->stuckSeconds = 3; c->bailHealth = 0.1f;
     c->steerKp = 1.5f; c->steerKd = 0.08f;
-    c->infantryRange = 260; c->reconRange = 450; c->reactionSeconds = 0.20f;   // (V25: 260 / 450 m, was 180 / 320)
-    c->infantryAimMargin = 0.20f; c->armorRange = 800; c->armorInfantryRange = 400;   // (V25: 800 / 400 m, was 650 / 300)
+    // AltBotMod V39 human style: fights out to 70 m, snipers 150 m, vehicle guns 375 m
+    // (V37-V38: 300 / 450 m; V25: 800 / 400 m for armour)
+    c->infantryRange = 70; c->reconRange = 150; c->reactionSeconds = 0.25f;
+    c->infantryAimMargin = 0.20f; c->armorRange = 375; c->armorInfantryRange = 150;
     c->weaponVariety = c->weaponAttachments = 1;
     c->gadgetVariety = c->c4Attacks = c->lockOnLaunchers = 1;   // AltBotMod V16
     c->botTicketCost = 0.5f; c->vehicleCountermeasures = 1;
@@ -37,8 +39,8 @@ void bm_defaults(BMConfig *c)
     c->driveStages=1;
     c->aggression = 1; c->savedRoutes = 1; c->botDamage = 1.0f; c->vehicleDamageTaken = c->vehicleDamageDealt = 1.0f;
     c->armorRepairHealth = 0.35f; c->armorTacticMeters = 70; c->trafficSpacing = 14;
-    c->difficulty = 5; c->randomDifficulty = 0;   // AltBotMod V9: elite
-    c->sniperRange = 550; c->sniperOverwatch = 1;   // AltBotMod V10
+    c->difficulty = 2; c->randomDifficulty = 0;   // AltBotMod V9: elite; V39: normal (with HumanStyle on every level plays the human profile anyway)
+    c->sniperRange = 150; c->sniperOverwatch = 1;   // AltBotMod V10 (V39: 150 m, the human style's sniper reach; was 550)
     c->sniperPairs = 1; c->supplyMeters = 60; c->classSupport = 1;   // AltBotMod V11
     c->botNames = 1;   // AltBotMod V28: gamertags by default (BotNames=0: the "[BOT] Support RU" names)
     c->lockAssist = 1;   // AltBotMod V29: lock-ons lock (LockOnAssist=0: only the game's own lock, which never locks for a bot)
@@ -47,7 +49,12 @@ void bm_defaults(BMConfig *c)
     c->objectiveMesh = 1; c->vehicleWalkMeters = 250.0f;   // AltBotMod V34
     c->liveMap = 1; c->liveMapSeconds = 1; c->liveMapTrailSeconds = 5; c->liveMapKeepMB = 64;   // AltBotMod V13
     c->learning = c->learnFromPlayers = 1;   // AltBotMod V21
-    c->sideSteps = 1;   // AltBotMod V14
+    c->sideSteps = 3;   // AltBotMod V14 (V39 default: step and shoot - 1 s sideways, 1.5 s still)
+    // AltBotMod V39 human style: bots that aim, react and move like people (the aim model: bm_haim_* below)
+    c->humanStyle = 1; c->humanAimError = 6.0f; c->humanSniperAimError = 3.0f; c->humanVehicleAimError = 3.0f; c->humanAirAimError = 4.0f;
+    c->humanAimSpread = 0.5f; c->humanRecoilBest = 0.9f; c->humanRecoilWorst = 0.5f;
+    c->humanReaction = 0.25f; c->humanFirstShot = 0.2f; c->humanFov = 160.0f; c->humanShootBack = 150.0f; c->humanSniperShootBack = 400.0f;
+    c->humanStrafe = 0.6f;
     c->routeActions = 1; c->reconBeacons = 1;   // AltBotMod V15
     c->hunt = 1; c->huntersPerPlayer = 8; c->huntIntelSeconds = 6; c->huntIntelMeters = 12; c->huntMaxMeters = 700;   // AltBotMod Hunt
     c->hearMeters = 120;
@@ -91,7 +98,14 @@ int bm_set(BMConfig *c, const char *key, const char *value)
         BOOL_KEY("ObjectiveMesh", objectiveMesh), FLOAT_KEY("VehicleWalkMeters", vehicleWalkMeters, 25, 6000),   // AltBotMod V34
         BOOL_KEY("LiveMap", liveMap), BOOL_KEY("Learning", learning), BOOL_KEY("LearnFromPlayers", learnFromPlayers), FLOAT_KEY("LiveMapSeconds", liveMapSeconds, 0.5f, 10),
         FLOAT_KEY("LiveMapTrailSeconds", liveMapTrailSeconds, 1, 60), INT_KEY("LiveMapKeepMB", liveMapKeepMB, 5, 1000),
-        INT_KEY("SideSteps", sideSteps, 0, 2),
+        INT_KEY("SideSteps", sideSteps, 0, 3),
+        // AltBotMod V39: human style - a human-like aim error, reaction, view and strafe pattern
+        BOOL_KEY("HumanStyle", humanStyle), FLOAT_KEY("HumanAimErrorMrad", humanAimError, 0, 40), FLOAT_KEY("HumanSniperAimErrorMrad", humanSniperAimError, 0, 40),
+        FLOAT_KEY("HumanVehicleAimErrorMrad", humanVehicleAimError, 0, 40), FLOAT_KEY("HumanAirAimErrorMrad", humanAirAimError, 0, 40),
+        FLOAT_KEY("HumanAimSkillSpread", humanAimSpread, 0, 1), FLOAT_KEY("HumanRecoilControlBest", humanRecoilBest, 0, 1), FLOAT_KEY("HumanRecoilControlWorst", humanRecoilWorst, 0, 1),
+        FLOAT_KEY("HumanReactionSeconds", humanReaction, 0, 2), FLOAT_KEY("HumanFirstShotSeconds", humanFirstShot, 0, 2),
+        FLOAT_KEY("HumanFovDegrees", humanFov, 40, 360), FLOAT_KEY("HumanShootBackMeters", humanShootBack, 20, 600), FLOAT_KEY("HumanSniperShootBackMeters", humanSniperShootBack, 50, 900),
+        FLOAT_KEY("HumanStrafe", humanStrafe, 0, 1),
         BOOL_KEY("Hunt", hunt), INT_KEY("HuntersPerPlayer", huntersPerPlayer, 0, 32),   // AltBotMod Hunt
         FLOAT_KEY("HuntIntelSeconds", huntIntelSeconds, 0, 60), FLOAT_KEY("HuntIntelMeters", huntIntelMeters, 0, 100),
         FLOAT_KEY("HuntMaxMeters", huntMaxMeters, 50, 3000), FLOAT_KEY("HearMeters", hearMeters, 0, 400),
@@ -482,6 +496,7 @@ float bm_vehicle_target_score(const BMVehicleProfile *p,enum BMTargetKind kind,f
 }
 
 // ---- AltBotMod V9: difficulty profiles ----
+// AltBotMod custom combat profiles: widened detection view to 175 degrees either side; infantry engagement and detection extended.
 // Values exactly as in the dev's BotMod public preview (BotModCore.dll .rdata, 5 records of 32 dwords). Fields in the
 // order of its difficulty.ini keys: ReactionSeconds BurstFrames PauseFrames AimToleranceRad AimMarginMeters
 // AimLagSeconds AimTurnGain FightRangeMeters EngageRangeMeters DetectRangeMeters FieldOfViewDegrees
@@ -489,24 +504,66 @@ float bm_vehicle_target_score(const BMVehicleProfile *p,enum BMTargetKind kind,f
 // FightSprintMeters FightStrafe JumpWhileRunningSeconds JumpWhileFightingSeconds FarCrouchMeters FarCrouchChance
 // AimSettleFrames AdsRangeMeters GuardSeconds GuardSpreadSeconds AimWorseningMeters AimSkillSpread FireModel RangeFalloff
 static const BMDifficulty kLevels[BM_LEVELS] = {
-    {0.80f,  8, 16, 0.040f, 0.30f, 0.25f, 1.5f,  90,  60,  70,  60.00f, 15.0f, 4.00f, 55, 15, 6, 30,  0, 0,   0,   0,    0, 0,    0, 50, 30, 15, 0.9f, 0.6f, 1, 0,     0, 0, 0, 0, 0},
-    {0.50f, 12, 10, 0.050f, 0.35f, 0.15f, 2.0f, 120,  80,  90,  77.29f, 10.0f, 2.00f, 40, 15, 6, 20,  0, 0,   0,   0,    0, 0,    0, 50, 20, 10, 0,    0,    0, 0,     0, 0, 0, 0, 0},
-    {0.30f, 14,  6, 0.055f, 0.40f, 0.10f, 3.0f, 170, 130, 150, 100.00f,  5.0f, 1.00f, 30, 12, 4, 12, 35, 0.6f, 6.0f, 0,  35, 0.25f, 5, 35, 12,  8, 0,    0.3f, 1, 0.5f,  0, 0, 0, 0, 0},
-    {0.15f, 18,  4, 0.055f, 0.42f, 0.05f, 4.0f, 280, 230, 270, 130.00f,  2.0f, 0.40f, 20, 10, 3,  8, 30, 0.8f, 4.0f, 2.5f, 28, 0.45f, 3, 25,  8,  6, 0,    0.15f, 1, 0.9f, 0, 0, 0, 0, 0},   // AltBotMod V26: veteran engages from 230 m (V25: 170, V22: 100), sees 270 m
-    {0.05f, 26,  2, 0.050f, 0.45f, 0.015f, 6.0f, 380, 300, 350, 170.00f, 0.5f, 0.10f, 10,  8, 2,  6, 25, 1.0f, 3.0f, 1.8f, 22, 0.60f, 1, 18,  5,  4, 0,   0.03f, 1, 1.2f,  0, 0, 0, 0, 0},   // AltBotMod V26: elite engages from 300 m (V25: 240, V22: 130), sees 350 m in a 170-deg view, reacts in 0.05 s, aim lag 0.015 s, opens fire within 0.4 m
-    // AltBotMod Hunt: nightmare - elite's aim with no let-up. Engages from 380 m and sees all round, longer bursts close in
+    // Reaction + settle is seven 30-Hz frames (~0.23 s) at every level: a fast human-like
+    // response after detection, without the old 0.05 s elite snap reaction.
+    // All profiles detect at 500 m and begin infantry engagements at 400 m. The
+    // configured fight range also reaches 400 m; weapon-family max range / range
+    // factor still limits actual shots (e.g. PDWs and shotguns remain close-range).
+    // (Hunt v4 merge: Mr.Cat's V37 rows for easy..elite; the five Hunt fields 0 there; nightmare from AltBotMod Hunt)
+    {0.2333f,  8, 16, 0.040f, 0.30f, 0.25f, 1.5f, 400, 400, 500,  175.00f, 15.0f, 4.00f, 55, 15, 6, 30,  0, 0,   0,   0,    0, 0,    0, 50, 30, 15, 0.9f, 0.6f, 1, 0,     0, 0, 0, 0, 0},
+    {0.2333f, 12, 10, 0.050f, 0.35f, 0.15f, 2.0f, 400, 400, 500,  175.00f, 10.0f, 2.00f, 40, 15, 6, 20,  0, 0,   0,   0,    0, 0,    0, 50, 20, 10, 0,    0,    0, 0,     0, 0, 0, 0, 0},
+    {0.0666f, 14,  6, 0.055f, 0.40f, 0.10f, 3.0f, 400, 400, 500, 175.00f,  5.0f, 1.00f, 30, 12, 4, 12, 35, 0.6f, 6.0f, 0,  35, 0.25f, 5, 35, 12,  8, 0,    0.3f, 1, 0.5f,  0, 0, 0, 0, 0},
+    {0.1333f, 18,  4, 0.055f, 0.42f, 0.05f, 4.0f, 400, 400, 500, 175.00f,  2.0f, 0.40f, 20, 10, 3,  8, 30, 0.8f, 4.0f, 2.5f, 28, 0.45f, 3, 25,  8,  6, 0,    0.15f, 1, 0.9f, 0, 0, 0, 0, 0},
+    {0.2000f, 26,  2, 0.050f, 0.45f, 0.015f, 6.0f, 400, 400, 500, 175.00f, 0.5f, 0.10f, 10,  8, 2,  6, 25, 1.0f, 3.0f, 1.8f, 22, 0.60f, 1, 18,  5,  4, 0,   0.03f, 1, 1.2f,  0, 0, 0, 0, 0},
+    // AltBotMod Hunt: nightmare - elite's aim with no let-up. Engages and detects as elite (400 / 500 m), holds a fight to
+    // 450 m and sees all round, longer bursts close in
     // (elite's pauses: the recoil still has to settle at range), next to no breather between fights; closes to 6 m and chases
     // 20 s; never runs for cover from an enemy within 40 m (further off: below 25 hp, losing the exchange, outnumbered or
-    // reloading under fire); quick irregular side steps close in; looks round every 0.3 s.
-    {0.03f, 30,  2, 0.050f, 0.45f, 0.010f, 8.0f, 450, 380, 420, 180.00f, 0.2f, 0.05f, 25,  6, 2,  6, 50, 1.0f, 3.0f, 1.5f, 25, 0.90f, 0, 15,  4,  3, 0,   0.0f,  1, 1.3f,
-     40.0f, 20.0f, 1, 3, 0.3f},
+    // reloading under fire); quick irregular side steps close in; looks round every 0.2 s.
+    {0.03f, 30,  2, 0.050f, 0.45f, 0.010f, 8.0f, 450, 400, 500, 180.00f, 0.2f, 0.05f, 25,  6, 2,  6, 50, 1.0f, 3.0f, 1.5f, 25, 0.90f, 0, 15,  4,  3, 0,   0.0f,  1, 1.3f,
+     40.0f, 20.0f, 1, 3, 0.2f},
 };
 static const char *const kLevelNames[BM_LEVELS + 1] = {"off", "easy", "normal", "hard", "veteran", "elite", "nightmare"};
+// ---- AltBotMod V39: the human profile ----
+// With HumanStyle=1 every difficulty level plays one profile built from the "normal" row: a person's reaction (HumanReactionSeconds 0.25 s) and
+// first-shot delay (HumanFirstShotSeconds 0.2 s) before a burst, the weapon's own burst / pause rhythm, InfantryEngageMeters (70 m) as the range
+// bots notice and fight at, a 160 degree view (80 either side), HumanStrafe while fighting, no hops while fighting or running (only
+// a jump to get past an obstacle), and about every other bot crouching to shoot. The aim error itself (sway, settle, jolt) is the
+// bm_haim_* model below, applied by core.c.
+// (Hunt v4 merge: with Hunt on, the human profile also fights like a hunter - it closes in on a fight from 25 m in and holds
+// and fires further out, chases one that ducked out of sight for 20 s and does not run for cover from an enemy within 40 m;
+// SnapAim=1 aims for it too. Its aim error, reaction, first-shot delay, rhythm, view and strafe pattern stay the human style's.)
+static BMDifficulty gHumanLevels[BM_LEVELS];
+static int gHumanOn;
+void bm_human_style_apply(const BMConfig *c)
+{
+    gHumanOn = c && c->humanStyle;
+    if (!gHumanOn) return;
+    for (int k = 0; k < BM_LEVELS; k++) {
+        BMDifficulty P = kLevels[1];
+        P.reaction = c->humanReaction;
+        P.settle = (int)(c->humanFirstShot * 30.0f + 0.5f);
+        P.burst = 12; P.pause = 10;
+        P.aimTol = 0.060f; P.aimMargin = 0.60f;   // (the aim error is in the aim itself; the fire window only has to let a steady aim shoot)
+        P.fightRange = P.engageRange = P.detectRange = c->infantryRange;
+        P.fov = c->humanFov * 0.5f;                 // the profile's FOV is a half angle
+        P.strafe = c->humanStrafe;
+        P.jumpRun = P.jumpFight = 0;
+        P.farCrouch = 5.0f; P.farCrouchChance = 0.5f;
+        P.skillSpread = c->humanAimSpread;
+        if (c->hunt) { P.push = 1; P.chaseSeconds = 20.0f; P.noCoverMeters = 40.0f; }   // (Hunt v4: a hunter's aggression)
+        if (k == BM_LEVELS - 1) {   // Hunt v4: nightmare keeps what makes it nightmare - it never lets up, steps quick and irregular
+            P.push = 1; P.chaseSeconds = kLevels[k].chaseSeconds; P.noCoverMeters = kLevels[k].noCoverMeters;   // close in, still with the human aim
+            P.dodge = kLevels[k].dodge; P.detectSeconds = kLevels[k].detectSeconds;
+        }
+        gHumanLevels[k] = P;
+    }
+}
 const BMDifficulty *bm_difficulty_level(int level)
 {
     if (level < 1) level = 1;
     if (level > BM_LEVELS) level = BM_LEVELS;
-    return &kLevels[level - 1];
+    return gHumanOn ? &gHumanLevels[level - 1] : &kLevels[level - 1];
 }
 const char *bm_difficulty_name(int level) { return level >= 0 && level <= BM_LEVELS ? kLevelNames[level] : "?"; }
 int bm_difficulty_parse(const char *text)
@@ -559,13 +616,19 @@ int bm_dodge_style(const BMConfig *c, const BMDifficulty *P, BMDodgeStyle *o)
     int mode = c ? c->sideSteps : 1;
     if (!P || mode <= 0) { o->hopScale = 0; return 0; }
     if (P->strafe <= 0) { o->hopScale = mode >= 2 ? 1.0f : 3.0f; o->hopNeedsThreat = mode < 2; return 0; }
-    if (P->dodge >= 3) {
+    if (P->dodge >= 3) {   // (Hunt v4 merge: nightmare's own steps first, then SideSteps=3's step and shoot)
         // AltBotMod Hunt (nightmare): what a good player does in a close gunfight - full-speed steps of 0.27-0.7 s, a pause of
         // at most a quarter second, mostly back the other way but not always (bm_dodge_next: 65 % reverse), from 20 m in
         // (v3: was 35 - steps spread the shots, and beyond 20 m they went everywhere), shooting or not; hops between bursts
         // at the profile's own rate, within the same 20 m
         o->level = P->strafe; o->maxMeters = 20; o->closeMeters = 20; o->stepMin = 8; o->stepMax = 21;
         o->restMin = 0; o->restMax = 8; o->hopScale = 1.0f; return 1;
+    }
+    if (mode >= 3) {   // AltBotMod V39: step and shoot - every 2.5 s a bot steps sideways for 1 s (random side), then stands for 1.5 s;
+        // always while it fights, at the profile's strafe level, and no hops (a jump only to get past an obstacle)
+        o->level = P->strafe; o->maxMeters = 400; o->closeMeters = 400; o->stepMin = o->stepMax = 30; o->restMin = o->restMax = 45;
+        o->needThreat = 0; o->hopScale = 0; o->hopNeedsThreat = 0;
+        return 1;
     }
     if (mode >= 2) {
         o->level = P->strafe * 0.9f; o->maxMeters = 80; o->closeMeters = 80; o->stepMin = 15; o->stepMax = 40;
@@ -587,4 +650,82 @@ int bm_dodge_next(const BMDodgeStyle *st, signed char *dir, signed char *last, u
     *dir = !prev ? ((r & 1) ? 1 : -1) : st->restMax > 0 ? (signed char)(((r >> 8) % 100) < 65 ? -prev : prev) : (signed char)-prev;
     *until = now + st->stepMin + (r >> 16) % (unsigned)(st->stepMax - st->stepMin + 1);
     return 1;
+}
+// ---- AltBotMod Hunt v4: human aim (HumanStyle) - how a person's crosshair behaves in a fight. Three offsets are added to the
+// bot's perfect aim (angles in radians, times in seconds):
+//  - sway: a slow random wander around the target that always drifts back (an Ornstein-Uhlenbeck process); its size is sigma
+//    sideways and HAIM_PITCH_SHARE of that up and down;
+//  - settle: taking a new target, the swing ends a little past it (now and then short of it); the miss dies away in 0.15-0.35 s;
+//  - jolt: a hit throws the aim up and to a side; it dies away in a quarter of a second.
+// sigma (bm_haim_sigma) is HumanAimErrorMrad at 25 m times the bot's skill. On foot part of it is a fixed miss in metres (its
+// angle shrinks with the distance) and part a fixed angle, so the miss in metres grows with the distance, but slower than it.
+// Moving and a target crossing the view make it larger. A mounted gun keeps a steady angle (the vehicle holds it).
+#define HAIM_REF_METERS       25.0f    // the distance HumanAimErrorMrad is given for
+#define HAIM_FIXED_MISS_SHARE 0.7f     // at 25 m: the share of sigma squared that is a fixed miss in metres (the rest: a fixed angle)
+#define HAIM_SWAY_SECONDS     0.45f    // how slowly the sway wanders (its correlation time)
+#define HAIM_PITCH_SHARE      0.75f    // up / down sway against the sideways one
+#define HAIM_JOLT_SECONDS     0.25f
+static float haim_uniform(void) { return ((float)rand() + 0.5f) / ((float)RAND_MAX + 1.0f); }   // (0, 1)
+static float haim_normal(void)   // a standard normal number (Box-Muller)
+{
+    float u = haim_uniform(), v = haim_uniform();
+    return sqrtf(-2.0f * logf(u)) * cosf(6.2831853f * v);
+}
+float bm_haim_trait(const char *botName)
+{
+    uint32_t h = 5381u;   // djb2 over the name, then murmur3's finaliser so that "Bot 1" and "Bot 2" end up far apart
+    for (const unsigned char *p = (const unsigned char *)(botName ? botName : ""); *p; p++) h = h * 33u + *p;
+    h ^= h >> 16; h *= 0x85ebca6bu; h ^= h >> 13; h *= 0xc2b2ae35u; h ^= h >> 16;
+    return (float)(h >> 8) / 16777216.0f;
+}
+float bm_haim_skill(float trait, float spread)
+{
+    spread = clampf(spread, 0.0f, 1.0f);
+    return 1.0f - spread + 2.0f * spread * clampf(trait, 0.0f, 1.0f);
+}
+float bm_haim_recoil_share(float best, float worst, float trait)
+{
+    float t = clampf(trait, 0.0f, 1.0f);
+    return clampf(best + (worst - best) * t, 0.0f, 1.0f);
+}
+float bm_haim_sigma(float errorMrad, float distance, float ownSpeed, float crossing, float skill, int onFoot)
+{
+    if (!(errorMrad > 0.0f) || !(skill > 0.0f)) return 0.0f;
+    float base = errorMrad * 0.001f * skill;
+    if (!onFoot) return base;
+    float closeness = HAIM_REF_METERS / fmaxf(isfinite(distance) ? distance : HAIM_REF_METERS, 3.0f);
+    float s = base * sqrtf(HAIM_FIXED_MISS_SHARE * closeness * closeness + (1.0f - HAIM_FIXED_MISS_SHARE));
+    s *= 1.0f + 0.12f * clampf(isfinite(ownSpeed) ? ownSpeed : 0.0f, 0.0f, 7.0f);      // walking at 4 m/s: x1.5
+    s *= 1.0f + 2.0f * clampf(isfinite(crossing) ? crossing : 0.0f, 0.0f, 0.75f);    // a target crossing at 0.25 rad/s: x1.5
+    return s;
+}
+void bm_haim_reset(BMHumanAim *a) { memset(a, 0, sizeof *a); }
+void bm_haim_jolt(BMHumanAim *a, float skill)
+{
+    float k = 0.6f + 0.4f * clampf(skill, 0.5f, 1.5f);   // a shakier bot is jolted more
+    a->jolt[1] = fminf(a->jolt[1] + k * (0.009f + 0.006f * haim_uniform()), 0.04f);   // up, 9-15 mrad
+    a->jolt[0] = clampf(a->jolt[0] + k * (haim_uniform() < 0.5f ? -1.0f : 1.0f) * (0.003f + 0.005f * haim_uniform()), -0.03f, 0.03f);
+}
+void bm_haim_step(BMHumanAim *a, float dt, float sigma, float skill, float turnYaw, float turnPitch, float *yawError, float *pitchError)
+{
+    float sd[2] = {fmaxf(sigma, 0.0f), fmaxf(sigma, 0.0f) * HAIM_PITCH_SHARE}, turn[2] = {turnYaw, turnPitch};
+    dt = clampf(isfinite(dt) ? dt : 0.0f, 0.0f, 0.25f);
+    if (!a->started) {   // a new target: the sway is already somewhere, and the swing onto it misses by a part of itself
+        a->started = 1;
+        a->settleSeconds = 0.10f + 0.12f * clampf(skill, 0.4f, 2.0f);
+        for (int k = 0; k < 2; k++) {
+            a->sway[k] = sd[k] * haim_normal();
+            float part = (0.04f + 0.16f * haim_uniform()) * clampf(skill, 0.3f, 2.0f) * (haim_uniform() < 0.75f ? 1.0f : -0.5f);
+            a->settle[k] = isfinite(turn[k]) ? clampf(turn[k] * part, -0.08f, 0.08f) : 0.0f;
+        }
+    } else if (dt > 0.0f) {
+        float keep = expf(-dt / HAIM_SWAY_SECONDS), fresh = sqrtf(fmaxf(0.0f, 1.0f - keep * keep));
+        float settle = expf(-dt / fmaxf(a->settleSeconds, 0.05f)), jolt = expf(-dt / HAIM_JOLT_SECONDS);
+        for (int k = 0; k < 2; k++) {
+            a->sway[k] = a->sway[k] * keep + sd[k] * fresh * haim_normal();
+            a->settle[k] *= settle; a->jolt[k] *= jolt;
+        }
+    }
+    *yawError = a->sway[0] + a->settle[0] + a->jolt[0];
+    *pitchError = a->sway[1] + a->settle[1] + a->jolt[1];
 }

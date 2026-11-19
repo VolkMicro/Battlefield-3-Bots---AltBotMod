@@ -7,7 +7,6 @@ static void *g_fleetBase[3];
 static float g_fleetBasePos[3][3];
 static unsigned g_fleetBaseArgs[3][3];
 static unsigned g_takeoverSince[MAX_BOTS];
-static unsigned g_fleetPriorityUntil;
 // Nearby teammates share failed walks; other teams and distant bots may try.
 typedef struct FleetRouteFailure {char *vehicle;int team;float origin[3];unsigned until;}FleetRouteFailure;
 static FleetRouteFailure g_fleetRouteFailure[64];
@@ -24,6 +23,7 @@ static int vehicle_finish_approach(int i,char *soldier,const float *position,flo
 static int fleet_claimed(char *vehicle, int except);
 static int fleet_air_slot(int team, const BMAirProfile *profile);
 static int fleet_pilot_allowed(int i);
+static int fleet_human_headstart(void);
 static int fleet_driver_flag(int i,char *vehicle);
 static void *fleet_spawn(char *bot);
 static void fleet_tick(int i);

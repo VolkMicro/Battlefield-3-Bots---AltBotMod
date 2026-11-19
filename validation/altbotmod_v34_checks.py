@@ -199,7 +199,7 @@ def check_pane(sanitize):
 def check_still():
     fl = (SRC / 'fleet_native.inc').read_text(); core = (SRC / 'core.c').read_text(); cm = (SRC / 'combat_motion.inc').read_text(); en = (SRC / 'enhanced.c').read_text()
     assert "if (distance>g_enhanced.vehicleWalkMeters) continue;" in fl and "dist2(origin,objective_pos(tf))<120*120) continue;" in fl
-    assert "if (!rush && *(char **)(H->bots[i]+OFF_PLAYER_SOLDIER) && H->frame-g_lastSpawnedAt[i]>20*30) {" in fl
+    assert "if (*(char **)(H->bots[i]+OFF_PLAYER_SOLDIER) && H->frame-g_lastSpawnedAt[i]>20*30) {" in fl   # (V38 Mr.Cat: the rush variable / FLEET_ROUND_RUSH is gone, fleet_human_headstart() instead)
     assert 'c->objectiveMesh = 1; c->vehicleWalkMeters = 250.0f;' in en and 'FLOAT_KEY("VehicleWalkMeters", vehicleWalkMeters, 25, 6000)' in en
     assert 'if (g_supplyFailTo[i] == sender && H->frame - g_supplyFailAt[i] < 45 * 30 && i != ti) continue;' in core
     assert cm.index('if(dist2(me,m->goal)<4*4 || dist2(enemy,m->goal)<12*12)goto failed;') < cm.index('if(plan_path(i,soldier,m->goal[0],m->goal[1],m->goal[2])){')

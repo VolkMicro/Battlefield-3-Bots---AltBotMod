@@ -12,7 +12,7 @@ static int gunship_team(char *veh)
 }
 static void gunship_tick(int i)
 {
-    if (!mode_uses_vehicles() || !level_ready() || g_roundCleanup || !g_vehInput || H->frame < g_gunshipFailUntil || (H->frame + i) % 15) return;
+    if (fleet_human_headstart() || !mode_uses_vehicles() || !level_ready() || g_roundCleanup || !g_vehInput || H->frame < g_gunshipFailUntil || (H->frame + i) % 15) return;
     char *pl = H->bots[i], *s = *(char **)(pl + OFF_PLAYER_SOLDIER);
     if (!s || *(float *)(s + OFF_SOLDIER_HEALTH) <= 0 || player_vehicle(pl) || g_drive[i].phase || g_air[i].phase || g_fleet[i].vehicle ||
         g_crewVehicle[i] || bot_brain(i)->commander || g_lastSpawnedBot[i] != pl || H->frame - g_lastSpawnedAt[i] > 3 * 30) return;

@@ -32,6 +32,7 @@ static void start(int i, const char *name) {
 int main(void)
 {
     bm_defaults(&g_enhanced); g_enhanced.aggression = 2; grid.phase = 2; grid.serial = 7;
+    g_enhanced.sniperRange = 550; g_enhanced.reconRange = 450;   // (the V25 reach the perches here were laid out for; V39 defaults 150 m)
     H->botCount = 4; H->frame = 1000;
     for (int k = 0; k < 4; k++) H->bots[k] = players[k];
     assert(g_enhanced.sniperPairs == 1);
@@ -271,7 +272,7 @@ def main():
         prints = []
         for k, kind, lo, hi, dflt in schema:
             if k == 'Difficulty':
-                assert kind == 'level' and dflt == 'elite'; continue
+                assert kind == 'level' and dflt == 'normal'; continue
             assert k in keys, k
             ck, field, clo, chi = keys[k]
             want = {'bool': 'BOOL', 'int': 'INT', 'aggr': 'INT', 'float': 'FLOAT'}[kind]

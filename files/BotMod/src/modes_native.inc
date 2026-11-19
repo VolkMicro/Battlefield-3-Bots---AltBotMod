@@ -354,6 +354,8 @@ static void rush_objective_message(const char *name)
 }
 static int rush_operator_holding(int i)
 {
+    // A confirmed infantry contact cancels the objective interaction; the fight loop owns the bot until safe.
+    if(i>=0 && i<H->botCount && bot_brain(i)->task==TASK_FIGHT)return 0;
     if(g_mode!=BM_MODE_RUSH || !g_modeProfile || i<0 || i>=H->botCount || !g_modeBot[i].interactAt)return 0;
     int k=g_modeBot[i].target;
     return k>=1 && k<=16 && g_rush.objective[k].operatorPlayer==H->bots[i];

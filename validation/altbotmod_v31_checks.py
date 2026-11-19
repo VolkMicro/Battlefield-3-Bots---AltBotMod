@@ -224,7 +224,7 @@ def main():
         an34 = (SRC / 'air_native.inc').read_text().replace('#include "lock_warn.h"   // AltBotMod V34\n', '')   # (V34 additions taken out again)
         x = an34.index('    // AltBotMod V34: a lock on this aircraft'); an34 = an34[:x] + an34[an34.index('    if (g_enhanced.air.countermeasures && a->lastHealth>0', x):]
         x = an34.index('            // AltBotMod V34: an enemy attack helicopter within 2 km'); an34 = an34[:x] + an34[an34.index('            // AltBotMod V24: an enemy helicopter within 1.2 km', x):]
-        assert an34.replace('m,1400.0f);   // (V34: 1400 m - V30 1000 m, V29 800 m)', 'm,800.0f);') == (V29SRC / 'air_native.inc').read_text()
+        assert an34.replace('    if(fleet_human_headstart())return 0;\n', '').replace('    if(fleet_human_headstart())return;\n', '').replace('m,1400.0f);   // (V34: 1400 m - V30 1000 m, V29 800 m)', 'm,800.0f);') == (V29SRC / 'air_native.inc').read_text()   # (V38 Mr.Cat: the human vehicle head-start guards in air_claim / air_consider undone)
         assert 'g_lockGeoAt' not in core and 'if (fwd[0] * g_lockWantDir[i][0] + fwd[1] * g_lockWantDir[i][1] + fwd[2] * g_lockWantDir[i][2] < 0.85f) continue;' in core
         print('PASS: back to V29 - the vehicle input feed is V29\'s (plus the read-only driver trace), no hooks on the vehicle, the kit loader V29\'s line for line (no vehicle unlocks), aircraft weapons and the lock matching as in V29')
         a = core.index('#define VRING 45'); b = core.index('#define EIA_SEAT_YAW 6')

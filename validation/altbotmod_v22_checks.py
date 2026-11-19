@@ -47,15 +47,15 @@ def main():
     assert 'int byAmmo = loaded + spare < g_lockAmmo[i]' in core and 'no %s left the tube in 7 s' in core and 'FORGET(g_lockCheckAt)' in core   # (V23: three ways)
     assert 'int armSecondary;' in (SRC / 'air.h').read_text() and 'out->armSecondary=s->secondaryWait<=0 && s->lockTime>0;' in air
     assert 'int want=(o->armSecondary || as->secondaryAt) ? 2 : 1;' in airn
-    assert 'relativeVelocity[k]=o->targetVelocity[k]-' in air and 'clamp(atanf((o->targetAir ? 12.0f : 6.0f)/fmaxf(aimRange,1)),o->targetAir ? 0.035f : 0.025f,0.12f)' in air
+    assert 'relativeVelocity[k]=o->targetVelocity[k]-' in air and 'clamp(atanf((o->targetAir ? 8.0f : 4.0f)/fmaxf(aimRange,1)),o->targetAir ? 0.025f : 0.018f,0.09f)' in air   # (V36 Mr.Cat: was 12.0f : 6.0f, 0.035f : 0.025f, 0.12f)
     assert 'rel[k] = g_gunAirMotion[i].velocity[k] - own[k];' in core and 'aim[0] = lp[0] - own[0] * t;' in core and 'g_gunAccel[i][k]' in core
     assert 'driverWeapon && vprofile->kind == BM_TANK && !isVeh && td < 150.0f) slot = 2;' in core and 'airframe->kind == BM_AIR_ATTACK && seat == 1 && isVeh && !targetAir' in core
-    assert '#define GUN_BURST_ON           54' in core and '#define GUN_BURST_OFF          6' in core and 'FORGET(g_gunOwnMotion)' in core
+    assert '#define GUN_BURST_ON           15' in core and '#define GUN_BURST_OFF          9' in core and 'FORGET(g_gunOwnMotion)' in core   # (Mr.Cat: GUN_BURST 54/6 -> 15/9)
     print('PASS: V22 weapons - lock-on launches confirmed by the magazine; aircraft missiles selected through the lock; gunners lead relative to their own '
           'platform and by the target\'s turn, use the coax / guided missile as the reference does, fire 1.8 s bursts; helicopters fire within ~6 m')
     # stationaries, difficulty, version
     assert '#define EMPLACEMENT_IDLE    (15 * 30)' in emp and 'dist2(p, at) < 850.0f * 850.0f' in emp and 'H->frame - g_botFiredAt[i] < 3' in emp
-    assert '{0.05f, 26,  2, 0.050f, 0.45f, 0.015f, 6.0f, 380, 300, 350' in en
+    assert '{0.2000f, 26,  2, 0.050f, 0.45f, 0.015f, 6.0f, 400, 400, 500' in en   # (V37 Mr.Cat: elite row was {0.05f,...,380,300,350})
     assert '#define BM_ENHANCED_VERSION "AltBotMod V35.2 - New Ground"' in eh and 'vt = bm_route_bend_limit(pb, w, pf, isBoat, bm_armored(profile));' in core
     print('PASS: V22 stationary weapons manned for a target in reach and left after 15 s without a shot; elite sharper; bends by radius; version V22')
 

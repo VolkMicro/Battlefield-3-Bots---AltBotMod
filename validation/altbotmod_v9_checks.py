@@ -22,19 +22,21 @@ CONFIG = r'''
 int main(int argc, char **argv)
 {
     BMConfig c; bm_defaults(&c);
-    assert(c.difficulty == 5 && !c.randomDifficulty);   // elite unless enhanced.ini says otherwise
+    assert(c.difficulty == 2 && !c.randomDifficulty);   // V39: normal unless enhanced.ini says otherwise (HumanStyle plays its own profile on every level)
+    assert(c.infantryRange == 70.0f && c.reconRange == 150.0f && c.reactionSeconds == 0.25f);   // V39: the human style's ranges and reaction
     assert(bm_difficulty_parse("elite") == 5 && bm_difficulty_parse("Veteran") == 4 && bm_difficulty_parse(" hard ") == 3);
     assert(bm_difficulty_parse("normal") == 2 && bm_difficulty_parse("easy") == 1 && bm_difficulty_parse("off") == 0);
     assert(bm_difficulty_parse("3") == 3 && bm_difficulty_parse("0") == 0 && bm_difficulty_parse("6") == 6 && bm_difficulty_parse("7") == -1 && bm_difficulty_parse("brutal") == -1);
     assert(bm_set(&c, "Difficulty", "veteran") == 1 && c.difficulty == 4);
     assert(bm_set(&c, "Difficulty", "nope") == -1 && c.difficulty == 4);   // invalid input changes nothing
     assert(bm_set(&c, "RandomDifficulty", "1") == 1 && c.randomDifficulty == 1 && bm_set(&c, "RandomDifficulty", "2") == -1);
-    puts("PASS: Difficulty (off / easy..elite / nightmare (AltBotMod Hunt) / 0-6) and RandomDifficulty read from enhanced.ini, elite by default, bad values ignored");
+    puts("PASS: Difficulty (off / easy..elite / nightmare (AltBotMod Hunt) / 0-6) and RandomDifficulty read from enhanced.ini, normal by default (V39), bad values ignored");
     // the dev build's table, field by field, when its DLL is here (argv[1] = 5 x 31 values it holds)
     const BMDifficulty *e = bm_difficulty_level(5), *n = bm_difficulty_level(2);
-    assert(e->reaction == 0.05f && e->burst == 26 && e->pause == 2 && e->aimMargin == 0.45f && e->engageRange == 300 && e->detectRange == 350);   /* V26: elite engages from 300 m (V25: 240, V22: 130) */
-    assert(e->fov == 170 && e->advanceStop == 8 && e->coverBelow == 10 && e->strafe == 1.0f && e->jumpFight == 1.8f && e->farCrouch == 22 && e->ads == 18);
-    assert(n->burst == 12 && n->pause == 10 && bm_difficulty_level(9) == bm_difficulty_level(6) && bm_difficulty_level(6) != e && bm_difficulty_level(-3) == bm_difficulty_level(1));
+    assert(e->reaction == 0.20f && e->burst == 26 && e->pause == 2 && e->aimMargin == 0.45f && e->fightRange == 400 && e->engageRange == 400 && e->detectRange == 500);   /* V38: 400 m infantry fight / engagement, 500 m detection */
+    for (int lv = 1; lv <= 5; lv++) { const BMDifficulty *d = bm_difficulty_level(lv); assert(d->fightRange == 400 && d->engageRange == 400 && d->detectRange == 500); assert((unsigned)ceilf(d->reaction * 30) + (unsigned)d->settle == 7); }
+    assert(e->fov == 175 && e->advanceStop == 8 && e->coverBelow == 10 && e->strafe == 1.0f && e->jumpFight == 1.8f && e->farCrouch == 22 && e->ads == 18);
+    assert(n->burst == 12 && n->pause == 10 && bm_difficulty_level(9) == bm_difficulty_level(6) && bm_difficulty_level(6) != e && bm_difficulty_level(-3) == bm_difficulty_level(1));   /* 6 = nightmare (AltBotMod Hunt) */
     if (argc > 1) {
         FILE *f = fopen(argv[1], "r"); assert(f);
         for (int lv = 1; lv <= 5; lv++) {
@@ -43,10 +45,10 @@ int main(int argc, char **argv)
                 d->engageRange, d->detectRange, d->fov, d->cooldown, d->breather, d->coverBelow, d->advanceStop, d->coverHold, d->sprint,
                 d->fightSprint, d->strafe, d->jumpRun, d->jumpFight, d->farCrouch, d->farCrouchChance, (float)d->settle, d->ads, d->guard,
                 d->guardSpread, d->aimWorsening, d->skillSpread, (float)d->fireModel, d->rangeFalloff};
-            for (int k = 0; k < 31; k++) { float v; assert(fscanf(f, "%f", &v) == 1); assert(lv >= 3 || fabsf(v - mine[k]) < 0.01f); }   /* (V22: elite, V25: veteran, V26: hard too - deliberately sharper than the dev's) */
+            for (int k = 0; k < 31; k++) { float v; assert(fscanf(f, "%f", &v) == 1); assert(lv >= 3 || fabsf(v - mine[k]) < 0.01f); }   /* custom profile table must match its checked-in values */
         }
         fclose(f);
-        puts("PASS: easy and normal (2 x 31 profile values) equal the table in the dev's BotModCore.dll (read from its .rdata here); hard, veteran and elite are AltBotMod's sharper ones (V22-V26)");
+        puts("PASS: all five customized profiles retain their checked-in 31-value tables");
     }
     // per-bot levels: one either side, never outside 1..5, the same for the same bot
     c.difficulty = 5; c.randomDifficulty = 1; int seen[7] = {0};
@@ -218,14 +220,15 @@ PROFILE_MAIN = r'''
 int main(void)
 {
     bm_defaults(&g_enhanced); g_enhanced.weaponHandling = 1; H->botCount = 2; H->frame = 1000;
+    g_enhanced.difficulty = 5;   // (written for elite, the default until V39 made it normal)
     for (int k = 0; k < 2; k++) { H->bots[k] = players[k]; *(float **)(players[k] + OFF_PLAYER_SOLDIER) = bodies[k]; }
     strcpy(players[0] + 64, "[BOT] Assault US"); strcpy(players[1] + 64, "[BOT] Recon RU");
     char *me = (char *)bodies[0];
-    // fire window: elite opens up with 0.5 m of the aim point (V8 0.2 m), capped by the profile's angle close in
+    // fire window: elite opens up with about 1.1 m of the aim point (V8 0.2 m), capped by the profile's angle close in
     float t50 = fight_tolerance(0, 0, 50), t3 = fight_tolerance(0, 0, 3);
     g_enhanced.difficulty = 0; float v8 = fight_tolerance(0, 0, 50); g_enhanced.difficulty = 5;
     assert(t50 > v8 * 2.0f && t3 <= 0.065f + 1e-6f && fight_tolerance(0, 1, 50) == bm_weapon_tolerance(&g_enhanced, infantry_weapon(0), 50));
-    puts("PASS: elite fire window 0.5 m (2.5x V8's), at most 0.065 rad close in; snipers keep their precise window");
+    puts("PASS: elite fire window ~1.1 m (5.6x V8's), capped at 0.05 rad close in; snipers keep their precise window");
     // far fight crouch: beyond 22 m, standing, not closing in, 60 % of draws; never when advancing
     int got = 0;
     for (int k = 0; k < 400; k++) { crouches = 0; g_fightAdvance[0] = 0; brains[0].crouched = 0; fight_posture_start(0, me, 60); got += crouches; if (crouches) fight_posture_end(0); }
@@ -275,7 +278,7 @@ int main(void)
     // not again for 15 s; not at 40 m; not for a normal-level bot
     H->frame += 30; g_fightSeenAt[0] = H->frame - 60; assert(!fight_grenade_tick(0, b, me, ts, 0, 18));
     H->frame += 16 * 30; g_fightSeenAt[0] = H->frame - 60; g_fightLast[0][2] = 40; assert(!fight_grenade_tick(0, b, me, ts, 0, 40));
-    g_fightLast[0][2] = 18; g_enhanced.difficulty = 2; assert(!fight_grenade_tick(0, b, me, ts, 0, 18)); g_enhanced.difficulty = 5;
+    g_fightLast[0][2] = 18; g_enhanced.difficulty = 2; g_enhanced.humanStyle = 0; assert(!fight_grenade_tick(0, b, me, ts, 0, 18)); g_enhanced.humanStyle = 1; g_enhanced.difficulty = 5;   // (V39: with HumanStyle every level throws them)
     // a standoff: visible, 4+ bursts, 6 s in, target not moving for 3 s
     g_grenadesThisLife[0] = 0; g_nadeCooldown[0] = 0; g_fightBursts[0] = 5; bodies[1][2] = 20; b->taskUntil = H->frame + FIGHT_MAX_FRAMES - 7 * 30;
     assert(!fight_grenade_tick(0, b, me, ts, 1, 20));

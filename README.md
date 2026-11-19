@@ -1,6 +1,6 @@
 # AltBotMod - Release 1.2
 
-> **Fork:** AltBotMod Release 1.2 by [sumemailadress-eng](https://github.com/sumemailadress-eng/Battlefield-3-Bots---AltBotMod) plus the [Hunt](#hunt-this-build) changes: bots hunt the human players, the `nightmare` gunfight level, hearing, the recon fix. Branch `hunt`; `main` follows the original.
+> **Fork:** AltBotMod Release 1.2 by [sumemailadress-eng](https://github.com/sumemailadress-eng/Battlefield-3-Bots---AltBotMod) plus Mr.Cat's V36-V39 (human-like aim, retaliation, vehicle head-start) and the [Hunt](#hunt-this-build) changes: bots hunt the human players, the `nightmare` gunfight level, hearing, snap aim, the recon fix. `main` follows the original.
 
 **AltBotMod** adds AI bots to a Battlefield 3 dedicated server. It is a native mod: no Venice Unleashed, and players need nothing extra. It runs on the ALP, bf4play and BF-Portable builds of `bf3_server_Final.exe`; the installer checks for that file before it changes anything.
 
@@ -19,6 +19,17 @@ Earlier releases: Release 1.1 fixed server lag and idle boats on maps with boats
 ## Hunt (this build)
 
 On top of Release 1.2 this build makes the bots come for the human players and fight like they mean it. Details and settings: [Hunt and nightmare](#hunt-and-nightmare).
+
+**v4 (with Mr.Cat's V36-V39):**
+- **Mr.Cat's human style is the base** (`HumanStyle=1`, on by default): part of the recoil held down (0.5-0.9 by bot), 0.25 s to notice plus 0.2 s to the first shot (+0.3 s per 100 m), 70 m fights, a 160 degree view, a step sideways every 2.5 s. Also his: a bot that is hit goes after the shooter, any visible enemy interrupts a non-combat task, bots look round 5 times a second, and humans get 90 s to take a vehicle first. Details: [CHANGELOG V36-V39](CHANGELOG-AltBotMod.md).
+- **A new aim model** for that style: a slow sway around the target, a miss on the swing onto a new target that settles in 0.15-0.35 s, a jolt when hit. The miss is 15 cm at 25 m and 35 cm at 100 m (`HumanAimErrorMrad=6`, one standard deviation, times each bot's own steadiness). Leading, a bot takes in its target's motion a reaction time late, so a strafe that turns fools it for a moment.
+- **The Hunt on top.** While `Hunt=1` every level closes in, chases a target 20 s and does not run for cover from an enemy within 40 m; the hunters still come from several sides. Snap aim (`SnapAim=1`) aims for them; the human-like aim error stays in the aim it is given.
+- **v3's settle pauses and per-gun recoil work with that aim:** the partial recoil control takes its share of each gun's learned climb.
+- **nightmare with that aim:** the same profile plus quick, irregular side steps within 20 m; further out it stands and shoots.
+- **The installer no longer moves `Difficulty`** (v2 moved elite to nightmare). The default is normal now, and the Hunt runs at any level.
+- **The chat line** says once a round that Hunt v4 runs, with the bots per player, the difficulty and the snap aim state. No such line: the old core is still loaded.
+- **Server Control** lists all of the style's settings (seven were missing), and its tank range defaults match the core (375 / 150 m).
+- **Fixed in V39:** when a bot left, the bots after it in the list took over each other's aim error, lead and grudge (that state was not moved with the list). The offline checks build and pass again: 66 of 69, the other 3 need research files that are not in the repository.
 
 **v3 (aim at range):**
 - **Bursts with time to settle.** From 20 m out the pause after a burst grows to the gun's own settle time (rifle 0.3 s, DMR 0.33 s between shots, bolt 1 s). Elite and nightmare used to leave 2 frames between bursts, so beyond 20 m the shots went everywhere.
@@ -371,6 +382,15 @@ Settings are in `enhanced.ini`, section `[AltBotMod]`. They are also editable in
 **In game:** `!hunt` shows the state; admins: `!hunt on`, `!hunt off`, `!hunt <0-32>` (bots per player), until a restart or `!botconfig reload`. Console: `hunt [on|off|<n>]`, `difficulty nightmare`.
 
 **Log lines:** `hunt: on - up to 8 bot(s) hunt each human player`, `hunt: X goes after Y (N m away, round its left)`, `hunt: X is round its left of Y - goes in`, `hunt: X stops hunting Y (why)`, and with the status (`!botdiag`) `hunt: on - ... N hunting now - sent, let go, routes, exact / rough fixes`; `difficulty: nightmare also - no cover from an enemy within 40 m, ...`.
+
+---
+
+## Human-like aim (V39)
+
+`HumanStyle=1`, on by default since V39: a human-like aim error (sway, the miss on a new target, the jolt of a hit; the model is new
+in Hunt v4), a 0.25 s reaction plus first-shot delay, a 160 degree view, fights out to 70 m (snipers 150 m) with shooting back to 150 m,
+a random burst rhythm and a sideways step of 1 s every 2.5 s. `HumanStyle=0` gives the V38 gunfight back. The `BotModCore.dll` in this
+branch is built from these sources. Details and all settings: [BOT-AIM-STYLE-V39.txt](BOT-AIM-STYLE-V39.txt).
 
 ---
 

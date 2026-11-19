@@ -41,7 +41,7 @@ static int __attribute__((unused)) sniper_holding(int i){(void)i;return 0;}   /*
 static float hdist(const float*a,const float*b){float dx=a[0]-b[0],dz=a[2]-b[2];return sqrtf(dx*dx+dz*dz);}
 '''+(SRC/'combat_motion.inc').read_text()+'\n'+re.search(r'^static int is_recon[^\n]+',core,re.M)[0]+'\n'+'\n'.join(function(core,n) for n in ['infantry_weapon','fight_range','end_fight','fight_tick'])+r'''
 static void init(unsigned frame){
- memset(&host,0,sizeof host);H->frame=frame;H->botCount=16;bm_defaults(&g_enhanced);
+ memset(&host,0,sizeof host);H->frame=frame;H->botCount=16;bm_defaults(&g_enhanced);g_enhanced.infantryRange=260;g_enhanced.reconRange=450;g_enhanced.reactionSeconds=0.20f;g_enhanced.humanStyle=0;   /* (V25 ranges: 120 m apart is a fight here; V39 human-style defaults: combat_mobility POLICY) */
  memset(g_combatMove,0,sizeof g_combatMove);memset(queuedPolls,0,sizeof queuedPolls);memset(moves,0,sizeof moves);memset(navs,0,sizeof navs);
  memset(g_fightMoveUntil,0,sizeof g_fightMoveUntil);memset(g_fightRetreat,0,sizeof g_fightRetreat);memset(g_fightAdvance,0,sizeof g_fightAdvance);
  blocked=terrainBad=requests=ends=cancels=0;

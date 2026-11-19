@@ -134,8 +134,8 @@ int main(void)
 {
     bm_defaults(&g_enhanced);
     assert(g_enhanced.hunt == 1 && g_enhanced.huntersPerPlayer == 8 && g_enhanced.huntIntelSeconds == 6 && g_enhanced.huntIntelMeters == 12);
-    assert(g_enhanced.huntMaxMeters == 700 && g_enhanced.hearMeters == 120 && g_enhanced.difficulty == 5);
-    printf("PASS: defaults - hunt on, 8 per player, rough fix every 6 s 12 m off, from 700 m, hearing 120 m; gunfight level still elite\n");
+    assert(g_enhanced.huntMaxMeters == 700 && g_enhanced.hearMeters == 120 && g_enhanced.difficulty == 2 && g_enhanced.humanStyle == 1);
+    printf("PASS: defaults - hunt on, 8 per player, rough fix every 6 s 12 m off, from 700 m, hearing 120 m; gunfight level normal with human style (Mr.Cat V39)\n");
     grid.phase = 2;
     H->frame = 1000; H->botCount = 20;
     for (int k = 0; k < NP; k++) {
@@ -155,7 +155,7 @@ int main(void)
     // 1. who is sent: the nearest free bots of the other team, one more per pass, at most 60 % of the team (6 of 10)
     step(10);
     assert(hunters() == 1 && hunt_quarry(10) == players[HUMAN]);
-    assert(strstr(lastChat, "[AltBotMod] Hunt v2: up to 8 bots hunt each player, difficulty elite, snap aim on (checking)"));
+    assert(strstr(lastChat, "[AltBotMod] Hunt v4: up to 8 bots hunt each player, difficulty normal, human aim, snap aim on (checking)"));
     lastChat[0] = 0; step(30); assert(!lastChat[0]);   // (once a round)
     printf("PASS: the chat says once a round, as soon as a player is in, that this build runs and with what (hunt, difficulty, snap aim)\n");
     step(170);
@@ -302,7 +302,7 @@ int main(void)
     // 11. a new round: nobody hunts anybody
     lastChat[0] = 0; g_roundEpoch++; step(1);
     assert(hunters() <= 1 && hunt_target_of(players[HUMAN]) && !hunt_target_of(players[HUMAN])->at);   /* (one sent in its first pass) */
-    assert(strstr(lastChat, "Hunt v2"));
+    assert(strstr(lastChat, "Hunt v4"));
     printf("PASS: a new round starts afresh: last round's hunters and knowledge dropped, the chat line again\n");
 
     // 12. the kill feed's tally
@@ -391,17 +391,35 @@ int main(void)
         assert(P->noCoverMeters == 0 && P->chaseSeconds == 0 && P->push == 0 && P->dodge == 0 && P->detectSeconds == 0);
     }
     const BMDifficulty *E = bm_difficulty_level(5), *N = bm_difficulty_level(6);
-    assert(E->reaction == 0.05f && E->burst == 26 && E->engageRange == 300 && E->coverBelow == 10);   // (elite untouched)
-    assert(N->noCoverMeters == 40 && N->chaseSeconds == 20 && N->push == 1 && N->dodge == 3 && N->detectSeconds > 0.25f && N->detectSeconds < 0.35f);
-    assert(N->reaction <= E->reaction && N->engageRange > E->engageRange && N->detectRange > E->detectRange && N->fightRange > E->fightRange);
+    assert(E->reaction == 0.20f && E->burst == 26 && E->engageRange == 400 && E->coverBelow == 10);   // (elite: Mr.Cat's V38 row, untouched by Hunt)
+    assert(N->noCoverMeters == 40 && N->chaseSeconds == 20 && N->push == 1 && N->dodge == 3 && N->detectSeconds > 0.15f && N->detectSeconds < 0.25f);
+    assert(N->reaction <= E->reaction && N->engageRange >= E->engageRange && N->detectRange >= E->detectRange && N->fightRange > E->fightRange);
     assert(N->aimMargin == E->aimMargin && N->aimTol == E->aimTol && N->pause == E->pause && N->burst >= E->burst);
-    printf("PASS: easy..elite keep their profiles (no new behaviour); nightmare: elite's aim, longer reach, no cover within 40 m, 20 s chase, push, quick steps, 0.3 s looks\n");
+    printf("PASS: easy..elite keep their profiles (no new behaviour); nightmare: elite's aim and reach, holds a fight further out, no cover within 40 m, 20 s chase, push, quick steps, 0.2 s looks\n");
     BMConfig c; bm_defaults(&c); BMDodgeStyle st;
+    assert(c.sideSteps == 3);   // (Mr.Cat V39 default: step and shoot)
     assert(bm_dodge_style(&c, N, &st) == 1 && st.level == 1.0f && !st.needThreat && st.maxMeters == 20 && st.stepMin == 8 && st.stepMax == 21 && st.restMax == 8);
-    assert(bm_dodge_style(&c, E, &st) == 1 && st.needThreat && st.level < 1.0f);   // elite: the V14 short steps under fire, as before
+    assert(bm_dodge_style(&c, E, &st) == 1 && !st.needThreat && st.stepMin == 30 && st.restMin == 45 && st.hopScale == 0);   // elite: step and shoot
+    c.sideSteps = 1; assert(bm_dodge_style(&c, E, &st) == 1 && st.needThreat && st.level < 1.0f);   // SideSteps=1: the V14 short steps under fire, as before
+    assert(bm_dodge_style(&c, N, &st) == 1 && st.maxMeters == 20 && st.stepMin == 8);
     c.sideSteps = 0; assert(bm_dodge_style(&c, N, &st) == 0);
     assert(N->farCrouch == 25 && N->farCrouchChance > 0.85f);
-    printf("PASS: nightmare side steps whenever it trades shots within 20 m (v3: was 35 - steps spread the shots; SideSteps=0 still none), crouches to fire beyond 25 m 9 times in 10; elite's as before\n");
+    printf("PASS: nightmare side steps whenever it trades shots within 20 m (v3: was 35 - steps spread the shots; SideSteps=0 still none), crouches to fire beyond 25 m 9 times in 10; elite: step and shoot (SideSteps=3) or V14's\n");
+    // v4: HumanStyle=1 (Mr.Cat V39) - every level plays the human profile; Hunt adds the hunter's push, nightmare keeps its own edge
+    bm_defaults(&c); bm_human_style_apply(&c);
+    for (int l = 1; l <= 5; l++) {
+        const BMDifficulty *P = bm_difficulty_level(l);
+        assert(P->engageRange == 70 && P->reaction == 0.25f && P->settle == 6 && P->push == 1 && P->chaseSeconds == 20 && P->noCoverMeters == 40 && P->dodge == 0 && P->detectSeconds == 0);
+    }
+    N = bm_difficulty_level(6);
+    assert(N->engageRange == 70 && N->reaction == 0.25f && N->aimTol == 0.060f && N->push == 1 && N->dodge == 3 && N->detectSeconds > 0.15f && N->detectSeconds < 0.25f && N->chaseSeconds == 20 && N->noCoverMeters == 40);
+    assert(bm_dodge_style(&c, N, &st) == 1 && st.maxMeters == 20 && st.stepMin == 8 && st.level == c.humanStrafe);   // (close in: quick steps; further out it stands and shoots)
+    c.hunt = 0; bm_human_style_apply(&c);
+    for (int l = 1; l <= 5; l++) assert(bm_difficulty_level(l)->push == 0 && bm_difficulty_level(l)->chaseSeconds == 0);
+    assert(bm_difficulty_level(6)->push == 1 && bm_difficulty_level(6)->dodge == 3);
+    c.humanStyle = 0; bm_human_style_apply(&c);
+    assert(bm_difficulty_level(5) == E && bm_difficulty_level(6)->engageRange >= 400);
+    printf("PASS: v4 with HumanStyle - every level plays the human profile (70 m, 0.25 s + 0.2 s), pushed and chasing while Hunt is on; nightmare keeps its quick close steps and 0.2 s looks; HumanStyle=0 the tables again\n");
     // v3: from 20 m out the pause after a burst lets the gun settle (all of it from 35 m); close in the level's pause stands
     const BMWeaponProfile *rifle = bm_weapon_profile("Weapons/AEK971/U_AEK971", 0, 0), *burst = bm_weapon_profile("Weapons/M16A4/U_M16A4", 0, 0);
     const BMWeaponProfile *lmg = bm_weapon_profile("Weapons/M240/U_M240", 0, 0), *dmr = bm_weapon_profile("Weapons/SVD/U_SVD", 1, 0);

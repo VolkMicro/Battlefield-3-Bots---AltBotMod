@@ -5,7 +5,7 @@ static void fleet_air_dispatch(void)
 {
     static unsigned checkedAt;static LONG epoch;
     if(epoch!=g_roundEpoch){checkedAt=0;epoch=g_roundEpoch;}
-    if(!mode_uses_vehicles() || !level_ready() || !g_enhanced.driving || !g_enhanced.returnToBase || g_driveOff || !g_vehInput ||
+    if(fleet_human_headstart() || !mode_uses_vehicles() || !level_ready() || !g_enhanced.driving || !g_enhanced.returnToBase || g_driveOff || !g_vehInput ||
        (!g_enhanced.air.jets && !g_enhanced.air.helicopters) || (checkedAt && H->frame-checkedAt<15))return;
     checkedAt=H->frame?H->frame:1;
     char **vehicles;int nv=vehicle_list(&vehicles);if(!nv)return;

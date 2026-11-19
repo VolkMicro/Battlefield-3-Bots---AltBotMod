@@ -192,6 +192,9 @@ static void bot_log(const char *f,...){(void)f;}
 #define __cdecl
 static unsigned char g_fightSlot[MAX_BOTS];static int g_gunLearned;   /* AltBotMod Hunt v3: impacts with the primary teach its gun's model */
 static void aim_model_learn(int i){(void)i;g_gunLearned++;}
+/* Mr.Cat V39: the sideways error the human aim put in is not the calibration's to learn (off here: altbotmod_human_style_checks.py) */
+static BMConfig g_enhanced;   /* (zeroed: HumanStyle off) */
+static float g_humanLat[MAX_BOTS][16];static unsigned g_humanLatAt[MAX_BOTS][16];
 '''
 AIM_MAIN = r'''
 static char projectile[0x100] __attribute__((aligned(8)));static void *ref;static float D=50;
@@ -262,6 +265,7 @@ CREW = r"""
 #define OFF_SOLDIER_HEALTH 12
 typedef struct { unsigned frame; int botCount; char *bots[MAX_BOTS]; float botMove[MAX_BOTS][3]; } Host; static Host host,*H=&host;
 static BMConfig g_enhanced;static int g_roundCleanup;
+static int fleet_human_headstart(void){return 0;}   /* Mr.Cat V39: the 90 s human vehicle head-start (over here; altbotmod_vehicle_headstart_checks.py) */
 static char players[MAX_BOTS][128] __attribute__((aligned(8)));static float bodies[MAX_BOTS][4];
 static int team_[MAX_BOTS],seat_[MAX_BOTS];static char *veh_[MAX_BOTS];
 typedef struct { char name[32]; int freeSeats; char *pilot; } Veh; static Veh heli={"Viper",1},tank={"M1A2",1},jet={"f16",0},jeep={"Growler",3},transport={"Venom",4};

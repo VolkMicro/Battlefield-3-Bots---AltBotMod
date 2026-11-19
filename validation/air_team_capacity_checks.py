@@ -17,7 +17,7 @@ int main(void){
    for(int seat=0;seat<5;seat++)pool[i].entries[seat]=pool[i].seatsMemory[seat]+4;
    vehicles[i]=(char*)&pool[i];}
  }
- H->frame=100000;g_fleetPriorityUntil=1;
+ H->frame=100000;g_levelReadyAt=0;
  for(int k=0;k<6;k++)for(int team=1;team<=2;team++){
   int i=(team-1)*16+k;assert(fleet_reserve(i,soldiers[i]));
   assert(((Vehicle*)g_fleet[i].vehicle)->team==team);
@@ -32,7 +32,7 @@ int main(void){
  }
  puts("PASS: BOTH teams simultaneously reserve one jet and five helicopters at their own deployment, after opening priority expires; twelve pilots coexist, each team refuses a seventh even with malformed settings");
  reset("M1Abrams",3);bm_defaults(&g_enhanced);g_enhanced.armored=1;H->botCount=32;
- vehicleCount=32;Vehicle groundPool[32];H->frame=100000;g_fleetPriorityUntil=1;
+ vehicleCount=32;Vehicle groundPool[32];H->frame=100000;g_levelReadyAt=0;
  g_flagCount=2;flagOwners[0]=1;flagOwners[1]=2;flags[0][0]=-500;flags[1][0]=500;
  for(int team=1;team<=2;team++){
   g_hqCpKnown[team]=1;g_hqCpPos[team][0]=team==1?-1000:1000;

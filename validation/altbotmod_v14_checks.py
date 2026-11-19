@@ -28,8 +28,8 @@ static void run(const BMConfig *c, const BMDifficulty *P, int *stepping, int *st
    if(dir)(*stepping)++; if(dir&&prev&&dir!=prev)(*flips)++; prev=dir?dir:prev; }
 }
 int main(void){
- BMConfig c; bm_defaults(&c); assert(c.sideSteps==1);
- assert(bm_set(&c,"SideSteps","2")==1&&c.sideSteps==2); assert(bm_set(&c,"SideSteps","3")==-1&&c.sideSteps==2); assert(bm_set(&c,"SideSteps","0")==1);
+ BMConfig c; bm_defaults(&c); assert(c.sideSteps==3);   /* V39: step and shoot by default (was 1) */
+ assert(bm_set(&c,"SideSteps","2")==1&&c.sideSteps==2); assert(bm_set(&c,"SideSteps","4")==-1&&c.sideSteps==2); assert(bm_set(&c,"SideSteps","0")==1);
  const BMDifficulty *elite=bm_difficulty_level(5),*normal=bm_difficulty_level(2);
  BMDodgeStyle st;
  c.sideSteps=0; assert(!bm_dodge_style(&c,elite,&st) && st.hopScale==0);

@@ -22,10 +22,15 @@ static float fight_tolerance(int i, int recon, float d)
     if (P && !recon) {
         const BMWeaponProfile *w = infantry_weapon(i);
         float f = w ? w->aimFactor : 1.0f;
-        float t = P->aimMargin * f / fmaxf(1.0f, d);
+        // The old 0.3 m / distance window was too narrow for the bot's native
+        // turn-rate at range: it tracked the target but held fire until it was
+        // almost point-blank. Allow a realistic ~0.75-1.1 m centre-mass window,
+        // still capped by each difficulty's angular tolerance.
+        float t = P->aimMargin * f * 2.6f / fmaxf(1.0f, d); // V37: practical centre-mass window prevents long-range aim lock
         return t < 0.0002f ? 0.0002f : t > P->aimTol ? P->aimTol : t;
     }
     float t = g_enhanced.weaponHandling ? bm_weapon_tolerance(&g_enhanced, infantry_weapon(i), d) : bm_infantry_tolerance(&g_enhanced, recon, d);
+    if (!recon) t = fminf(0.05f, t * 2.5f);   // the same practical centre-mass window when difficulty profiles are disabled
     // AltBotMod V10: past 150 m a sniper aims at the chest (see fight_tick) and fires within 0.2 m of it (0.12 m before:
     // at 400 m it could wait seconds for an aim that steady)
     if (recon && d > 150.0f && t < 0.2f / d) t = 0.2f / d;
@@ -208,7 +213,7 @@ static int fight_grenade_tick(int i, BotBrain *b, char *soldier, char *ts, int v
         }
         return 1;
     }
-    if (!P || P->engageRange < 90 || H->frame < g_nadeCooldown[i] || g_grenadesThisLife[i] >= 2) return 0;   // hard and above
+    if (!P || (P->burst < 14 && !g_enhanced.humanStyle) || H->frame < g_nadeCooldown[i] || g_grenadesThisLife[i] >= 2) return 0;   /* V39: the human style throws them too */   // hard and above; burst tier remains the difficulty gate after range unification
     const char *why = NULL;
     float aim[3];
     if (!visible && g_fightSeenAt[i] && H->frame - g_fightSeenAt[i] > 45 && H->frame - g_fightSeenAt[i] < 6 * 30) {

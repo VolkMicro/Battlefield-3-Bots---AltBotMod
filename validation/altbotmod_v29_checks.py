@@ -214,10 +214,10 @@ def main():
     print('PASS: V29 driving source - no waiting turns; nothing static counts on a recorded road (vehicles by geometry: the lane scan along the route); '
           'the throttle from bm_drive_throttle with no smoothing; passing aims beside the stopped vehicle; drivers never jump, crouch, go prone or sprint; '
           'the director and re-plans keep the last throttle; 20 s statistics and the speed drops with the throttle down are logged')
-    assert 'if (airframe && seat > 0 && !guided) tolerance = fmaxf(tolerance, fmaxf(0.03f, atanf((isVeh ? 5.0f : 3.0f) / fmaxf(1, dh))));' in core
+    assert 'if (airframe && seat > 0 && !guided) tolerance = fmaxf(tolerance, fmaxf(0.020f, atanf((isVeh ? 2.0f : 1.4f) / fmaxf(1, dh)))); // V1.3: tighter door-gunner grouping while allowing for aircraft sway' in core   # (Mr.Cat: was 0.025f, 3.5f / 2.2f)
     assert 'if (vehicle_is_aircraft(veh)) { g_seatYaw[i] = (g_gunTries[i] & 1) ? 1.0f : -1.0f; g_gunStepAt[i] = H->frame + 12; }' in core
     assert 'else if (driverWeapon && vprofile->kind == BM_AA && targetAir && g_gunNoMissiles[i] != veh) {' in core
-    print('PASS: V29 gunners - a helicopter door gun fires within 3 m of a man / 5 m of a vehicle (1.7 deg at least), its weapon found with a full 0.4 s nudge; an AA vehicle tries its missiles 4 s in 12 at aircraft')
+    print('PASS: V29 gunners - a helicopter door gun uses a tighter 2.2 m man / 3.5 m vehicle alignment window, its weapon found with a full 0.4 s nudge; an AA vehicle tries its missiles 4 s in 12 at aircraft')
     assert 'lock_want_ent(i, eye, aim, 4.0f, g_lockSince[i] ? veh : NULL);' in core
     assert "lock_want_ent(i, gp, aim, 10.0f, isVeh && fabsf(err) < 0.06f && fabsf(perr) < 0.06f ? g_gunTargetVeh[i] : NULL);" in core
     assert 'AIR_LOCK_WANT_ENT(i,axf+12,to,15.0f,g_air[i].targetVeh);' in an and '#define AIR_LOCK_WANT_ENT(i, from, to, r, t) lock_want_ent(i, from, to, r, t)' in core

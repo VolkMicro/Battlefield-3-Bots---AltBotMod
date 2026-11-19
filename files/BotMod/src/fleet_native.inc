@@ -1,12 +1,16 @@
-#ifndef FLEET_ROUND_RUSH
-#define FLEET_ROUND_RUSH 0   // AltBotMod V23 (core.c: the first 2 minutes of a round)
-#endif
 #ifndef FLEET_BOAT_NOT_NEEDED
 #define FLEET_BOAT_NOT_NEEDED(v,from,f) 0
 #endif
 #ifndef ROUTE_BOARD_BONUS
 #define ROUTE_BOARD_BONUS(v,team) 0.0f
 #endif
+// Give a joining human player time to load into the server before bots requisition vehicles.
+// The timer starts when the current level becomes ready and is reset for each new round/map.
+#define FLEET_HUMAN_HEADSTART_FRAMES (90u * 30u)  // 90 seconds at the server's 30 Hz frame clock
+static int fleet_human_headstart(void)
+{
+    return g_levelReadyAt && (unsigned)(H->frame - g_levelReadyAt) < FLEET_HUMAN_HEADSTART_FRAMES;
+}
 // Requisition available vehicles using the beta's existing spawn/path/seat APIs.
 // No teleporting living bots, forced deaths, vehicle creation, or new addresses.
 static void fleet_inventory_tick(void)
@@ -167,6 +171,7 @@ static int fleet_enabled(int i)
 }
 static int fleet_reserve(int i,const float *origin)
 {
+    if(fleet_human_headstart())return 0;
     int team=player_team(H->bots[i]); if (team<1 || team>2) return 0;
     if(g_mode==BM_MODE_RUSH && mode_vehicle_target(i,origin)<0)return 0;
     FleetReservation *r=&g_fleet[i];
@@ -177,10 +182,8 @@ static int fleet_reserve(int i,const float *origin)
     // deployment while these two requests receive the shared route budget.
     int queued=0;for(int j=0;j<H->botCount;j++)if(j!=i && player_team(H->bots[j])==team &&
         g_fleet[j].vehicle && H->frame<g_fleet[j].until && !g_drive[j].phase && !g_air[j].phase)queued++;
-    // AltBotMod V23: a round's start is a rush to every vehicle - in its first 2 minutes any number walk to one; after that
-    // 8 at a time (V9-V22: 2 at a time unless one stood within 25 m - most of a base's vehicles waited)
-    int rush=FLEET_ROUND_RUSH;
-    if(!rush && queued>=8){
+    // After the human head-start, bound unstarted vehicle walks to eight per team.
+    if(queued>=8){
         char **available;int count=vehicle_list(&available),close=0;
         for(int k=0;k<count && !close;k++)if(!strcmp(fleet_reason(available[k],team),"available") &&
             !fleet_claimed(available[k],i) && dist2(origin,vehicle_pos(available[k],NULL))<25*25)close=1;
@@ -201,7 +204,7 @@ static int fleet_reserve(int i,const float *origin)
         // to a vehicle, and one with its objective close by (120 m) only to a vehicle beside it (40 m). V33 Caspian Border:
         // 242 objectives dropped in 17 min for 300-700 m walks back to base, the vehicle mostly gone or destroyed on arrival
         // (84 taken at the spawn screen, 92 destroyed) - the bots turned round again and again.
-        if (!rush && *(char **)(H->bots[i]+OFF_PLAYER_SOLDIER) && H->frame-g_lastSpawnedAt[i]>20*30) {   // (a bot choosing where to spawn is not walking)
+        if (*(char **)(H->bots[i]+OFF_PLAYER_SOLDIER) && H->frame-g_lastSpawnedAt[i]>20*30) {   // (a bot choosing where to spawn is not walking)
             if (distance>g_enhanced.vehicleWalkMeters) continue;
             int tf=bot_brain(i)->targetFlag;
             if (distance>40 && tf>=0 && tf<objective_count() && objective_pos(tf) && dist2(origin,objective_pos(tf))<120*120) continue;
@@ -239,7 +242,7 @@ static int fleet_reserve(int i,const float *origin)
 static void *fleet_spawn(char *bot)
 {
     int i=bot_index(bot),team=player_team(bot);
-    if (i<0 || team<1 || team>2) return NULL;
+    if (i<0 || team<1 || team>2 || fleet_human_headstart()) return NULL;
     if(!*(char **)(bot+OFF_PLAYER_SOLDIER)) {
         // A new life at deployment can reach a vehicle that the previous life
         // could not. Old walking / destroyed-vehicle cooldowns must not force
@@ -281,7 +284,7 @@ static void fleet_nearby_opportunity(int i)
     BotBrain *b=bot_brain(i);char *pl=H->bots[i],*s=*(char **)(pl+OFF_PLAYER_SOLDIER);
     // A distant firefight must not permanently exclude an unused tank beside
     // the bot. Keep human orders and immediate self-defence in control.
-    if((H->frame+i)%30 || !mode_uses_vehicles() || !level_ready() || !g_enhanced.returnToBase ||
+    if(fleet_human_headstart() || (H->frame+i)%30 || !mode_uses_vehicles() || !level_ready() || !g_enhanced.returnToBase ||
        !b->enabled || b->task!=TASK_FIGHT || b->prevTask!=TASK_NONE || !s ||
        player_vehicle(pl) || g_drive[i].phase || g_air[i].phase || H->frame<g_fleet[i].retryAt ||
        (g_hitAt[i] && H->frame-g_hitAt[i]<3*30))return;
@@ -341,6 +344,7 @@ static void fleet_release_distant_claim(int i)
 #define FLEET_QUEUE_TIMEOUT_FRAMES (20*30)
 static void fleet_tick(int i)
 {
+    if(fleet_human_headstart())return;
     fleet_nearby_opportunity(i);
     fleet_release_distant_claim(i);
     FleetReservation *pending=&g_fleet[i];
@@ -372,10 +376,7 @@ static void fleet_tick(int i)
         float *boardingPosition=g_fleet[i].vehicle && vehicle_ok(g_fleet[i].vehicle)?vehicle_pos(g_fleet[i].vehicle,NULL):NULL;
         if(!boardingPosition || dist2((float *)(s+OFF_SOLDIER_POSITION),boardingPosition)>25*25)return;
     }
-    if(!g_fleetPriorityUntil)g_fleetPriorityUntil=H->frame+60*30;
-    int opening=H->frame<g_fleetPriorityUntil || H->frame-g_lastSpawnedAt[i]<15*30;
     if(!g_fleet[i].vehicle && (H->frame+i)%15)return;
-    (void)opening;
     const float *me=(float *)(s+OFF_SOLDIER_POSITION);
     if (!fleet_reserve(i,me)) return;
     FleetReservation *r=&g_fleet[i]; char *v=r->vehicle;
@@ -417,7 +418,8 @@ static void fleet_tick(int i)
 static void fleet_status(void)
 {
     bot_log("fleet: return-to-base=%d passenger-takeover=%d range=%.0f m ground-dispatch-limit/team=%d; human seats preserved",g_enhanced.returnToBase,g_enhanced.passengerTakeover,g_enhanced.returnMeters,g_enhanced.groundDriversPerTeam);
-    bot_log("fleet: opening priority remaining=%.0f s; vehicle cache epoch=%ld current round=%ld",H->frame<g_fleetPriorityUntil?(g_fleetPriorityUntil-H->frame)/30.0f:0,g_compEpoch,g_roundEpoch);
+    unsigned remaining=fleet_human_headstart()?FLEET_HUMAN_HEADSTART_FRAMES-(unsigned)(H->frame-g_levelReadyAt):0;
+    bot_log("fleet: human vehicle head-start remaining=%.0f s; vehicle cache epoch=%ld current round=%ld",remaining/30.0f,g_compEpoch,g_roundEpoch);
     for (int t=1;t<=2;t++) {
         int air,jets,ground,total; fleet_counts(t,&air,&jets,&ground,&total);
         bot_log("fleet: team=%d bots=%d pilots/queued=%d jets/queued=%d ground/queued=%d original-HQ=%p",t,total,air,jets,ground,g_fleetBase[t]);
@@ -491,6 +493,7 @@ static int fleet_driver_flag(int i,char *vehicle)
 }
 static void fleet_takeover(int i)
 {
+    if(fleet_human_headstart())return;
     char *pl=H->bots[i],*v=player_vehicle(pl);
     if(v && !g_drive[i].phase && !g_air[i].phase && vehicle_ok(v) && vehicle_seat_of(v,pl)==0 &&
         g_enhanced.driving && !g_driveOff && g_vehInput && mode_uses_vehicles() && level_ready() && bot_brain(i)->enabled &&
