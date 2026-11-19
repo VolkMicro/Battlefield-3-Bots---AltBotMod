@@ -9,6 +9,7 @@ Not a live BF3 test.
 """
 import argparse, subprocess, tempfile
 from pathlib import Path
+from test4_checks import _function as function
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / 'files/BotMod/src'
@@ -396,10 +397,21 @@ int main(void)
     assert(N->aimMargin == E->aimMargin && N->aimTol == E->aimTol && N->pause == E->pause && N->burst >= E->burst);
     printf("PASS: easy..elite keep their profiles (no new behaviour); nightmare: elite's aim, longer reach, no cover within 40 m, 20 s chase, push, quick steps, 0.3 s looks\n");
     BMConfig c; bm_defaults(&c); BMDodgeStyle st;
-    assert(bm_dodge_style(&c, N, &st) == 1 && st.level == 1.0f && !st.needThreat && st.maxMeters == 35 && st.stepMin == 8 && st.stepMax == 21 && st.restMax == 8);
+    assert(bm_dodge_style(&c, N, &st) == 1 && st.level == 1.0f && !st.needThreat && st.maxMeters == 20 && st.stepMin == 8 && st.stepMax == 21 && st.restMax == 8);
     assert(bm_dodge_style(&c, E, &st) == 1 && st.needThreat && st.level < 1.0f);   // elite: the V14 short steps under fire, as before
     c.sideSteps = 0; assert(bm_dodge_style(&c, N, &st) == 0);
-    printf("PASS: nightmare side steps whenever it trades shots within 35 m (SideSteps=0 still none); elite's as before\n");
+    assert(N->farCrouch == 25 && N->farCrouchChance > 0.85f);
+    printf("PASS: nightmare side steps whenever it trades shots within 20 m (v3: was 35 - steps spread the shots; SideSteps=0 still none), crouches to fire beyond 25 m 9 times in 10; elite's as before\n");
+    // v3: from 20 m out the pause after a burst lets the gun settle (all of it from 35 m); close in the level's pause stands
+    const BMWeaponProfile *rifle = bm_weapon_profile("Weapons/AEK971/U_AEK971", 0, 0), *burst = bm_weapon_profile("Weapons/M16A4/U_M16A4", 0, 0);
+    const BMWeaponProfile *lmg = bm_weapon_profile("Weapons/M240/U_M240", 0, 0), *dmr = bm_weapon_profile("Weapons/SVD/U_SVD", 1, 0);
+    const BMWeaponProfile *bolt = bm_weapon_profile("Weapons/M40A5/U_M40A5", 1, 0), *pdw = bm_weapon_profile("Weapons/P90/U_P90", 0, 0);
+    assert(bm_weapon_range_pause(rifle, 2, 10) == 2 && bm_weapon_range_pause(rifle, 2, 20) == 2);
+    assert(bm_weapon_range_pause(rifle, 2, 27.5f) == 6 && bm_weapon_range_pause(rifle, 2, 35) == 9 && bm_weapon_range_pause(rifle, 2, 80) == 9);
+    assert(bm_weapon_range_pause(burst, 1, 50) == 9 && bm_weapon_range_pause(lmg, 2, 60) == 9 && bm_weapon_range_pause(lmg, 2, 130) == 12);
+    assert(bm_weapon_range_pause(dmr, 2, 60) == 10 && bm_weapon_range_pause(bolt, 6, 200) == 30 && bm_weapon_range_pause(pdw, 1, 40) == 6);
+    assert(bm_weapon_range_pause(rifle, 20, 60) == 20 && bm_weapon_range_pause(NULL, 2, 60) == 9);   /* (never shorter than the level's; no profile: a rifle) */
+    printf("PASS: v3 - beyond 20 m the pause after a burst grows to the gun's settle time (rifle 2 -> 9 frames at 35 m, burst rifle 9, LMG 9-12, DMR 10, bolt 30); close in unchanged\n");
     bm_defaults(&c); c.difficulty = 6; c.randomDifficulty = 1;
     char name[16]; for (int k = 0; k < 200; k++) { snprintf(name, sizeof name, "b%d", k); int l = bm_bot_difficulty(&c, name); assert(l >= 5 && l <= 6); }
     printf("PASS: RandomDifficulty at nightmare mixes elite and nightmare\n");
@@ -415,13 +427,47 @@ int main(void)
 '''
 
 
+GUNS = r'''
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+#define MAX_BOTS 4
+static float g_aimFixH[MAX_BOTS], g_aimFixHAvg = 0.4f, g_aimFixV[MAX_BOTS], g_aimClimb[MAX_BOTS], g_aimFixS[MAX_BOTS];
+static float g_aimFixVAvg = 0.02f, g_aimClimbAvg = 0.001f, g_aimFixSAvg;
+static unsigned char g_aimFixSet[MAX_BOTS];
+%GUNS%
+int main(void)
+{
+    assert(aimw_index("Weapons/M16A4/U_M16A4") == 0 && aimw_index("Weapons/M16A4/U_M16A4") == 0 && aimw_index("Weapons/M240/U_M240") == 1);
+    assert(aimw_index(NULL) == -1 && aimw_index("") == -1 && !strcmp(g_aimW[1].name, "U_M240"));
+    g_aimWeapon[0] = 1; aim_fit_start(0);   /* the M16, no model yet: what all bots learned */
+    assert(g_aimFixSet[0] == 1 && g_aimFitFor[0] == 1 && g_aimClimb[0] == g_aimClimbAvg && g_aimFixV[0] == g_aimFixVAvg);
+    g_aimClimb[0] = 0.002f; aim_model_learn(0); assert(g_aimW[0].impacts == 1 && g_aimW[0].C == 0.002f);
+    for (int k = 0; k < 9; k++) { g_aimClimb[0] = 0.003f; aim_model_learn(0); }
+    assert(g_aimW[0].impacts == 10 && g_aimW[0].C > 0.0025f && g_aimW[0].C < 0.003f);
+    g_aimWeapon[1] = 1; aim_fit_start(1); assert(g_aimClimb[1] == g_aimW[0].C);   /* another bot with an M16: the M16's model */
+    g_aimWeapon[0] = 2; assert(g_aimFitFor[0] != g_aimWeapon[0]);   /* its kit brings the M240: the fit starts again */
+    aim_fit_start(0); assert(g_aimClimb[0] == g_aimClimbAvg && g_aimFitFor[0] == 2);
+    g_aimFitFor[1] = 2; g_aimWeapon[1] = 1; unsigned before = g_aimW[0].impacts; aim_model_learn(1); assert(g_aimW[0].impacts == before);
+    char nm[32]; for (int k = 0; k < 60; k++) { snprintf(nm, sizeof nm, "Weapons/X/U_G%d", k); aimw_index(nm); }
+    assert(g_aimWN == AIMW_MAX && aimw_index("Weapons/Y/U_NEW") == -1 && aimw_index("Weapons/M240/U_M240") == 1);
+    printf("PASS: v3 - recoil learned per gun: a new kit starts the bot's fit from that gun's model (8+ impacts) or the all-bot average, "
+           "its primary's impacts teach the gun's model, a fit started for another gun teaches nothing, 48 guns at most\n");
+    return 0;
+}
+'''
+
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument('--sanitize', action='store_true'); a = ap.parse_args()
+    core0 = (SRC / 'core.c').read_text(encoding='utf-8-sig')
+    gstart = core0.index('#define AIMW_MAX'); gend = core0.index('static int apply_loadout(char *bot, int idx)', gstart)
+    guns = GUNS.replace('%GUNS%', core0[gstart:gend] + function(core0, 'aim_fit_start') + '\n' + function(core0, 'aim_model_learn'))
     san = ['-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-g'] if a.sanitize else ['-O1']
     env = {'ASAN_OPTIONS': 'detect_leaks=0'}
     with tempfile.TemporaryDirectory(prefix='bf3-hunt-') as tmp:
         tmp = Path(tmp)
-        for name, body in (('levels', LEVELS), ('hunt', HARNESS)):
+        for name, body in (('levels', LEVELS), ('hunt', HARNESS), ('guns', guns)):
             c = tmp / (name + '.c'); c.write_text(body); exe = tmp / name
             subprocess.run(['gcc', *san, '-std=gnu11', '-Wall', '-Wextra', '-Wno-unused-function', '-Wno-unused-parameter', '-Wno-unused-variable',
                             '-I', str(SRC), str(c), str(SRC / 'enhanced.c'), str(SRC / 'air.c'), '-lm', '-o', str(exe)], check=True)

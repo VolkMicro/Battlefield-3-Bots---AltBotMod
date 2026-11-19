@@ -234,6 +234,17 @@ int main(void)
     g_fightAdvance[0] = 1; for (int k = 0; k < 50; k++) fight_posture_start(0, me, 60); assert(!crouches);
     g_fightAdvance[0] = 0; stands = 0; srand(7); while (!crouches) fight_posture_start(0, me, 60); fight_posture_end(0); assert(stands == 1);
     puts("PASS: an elite bot crouches for a far fight (>22 m) about 60% of the time, never when closing in, and stands when it ends");
+    // AltBotMod Hunt v3: nightmare holds at range - it crouches there (90 %) even when it will close in later, not within
+    // 25 m, and stands up to close in
+    g_enhanced.difficulty = 6; got = 0;
+    for (int k = 0; k < 400; k++) { crouches = 0; g_fightAdvance[0] = 1; brains[0].crouched = 0; fight_posture_start(0, me, 60); got += crouches; if (crouches) fight_posture_end(0); }
+    assert(got > 320);
+    crouches = 0; for (int k = 0; k < 50; k++) fight_posture_start(0, me, 20); assert(!crouches);
+    srand(3); while (!crouches) fight_posture_start(0, me, 60);
+    stands = 0; fight_posture_close_in(0); assert(stands == 1 && !g_fightCrouch[0]);
+    stands = 0; fight_posture_close_in(0); assert(stands == 0);
+    g_enhanced.difficulty = 5; g_fightAdvance[0] = 0;
+    puts("PASS: AltBotMod Hunt v3 - a nightmare bot crouches to fire at range (90%) even when it closes in later, not within 25 m, and stands up to close in");
     // side-step room: walls / water on a side are seen, open ground is free
     float pos[3] = {0, 0, 0};
     assert(dodge_room(pos, 0, 1) && dodge_room(pos, 0, -1));
@@ -375,10 +386,13 @@ def main():
         pieces = [PROFILE_PRE]
         for name in ['grenade_pitch']:
             pieces.append(function(core, name))
+        # AltBotMod Hunt v3: a nightmare bot holds (and crouches) at range even when it closes in later
+        pieces.append(re.search(r'^#define PUSH_HOLD_METERS[^\n]+', core, re.M)[0])
+        pieces.append(function(core, 'fight_holds_at_range'))
         state = inc[:inc.index('// The fire window:')]
         state = state.replace('static int grenade_pitch(float dh, float dy, float *pitch);', '')
         pieces.append(state)
-        for name in ['fight_tolerance', 'fight_posture_start', 'fight_posture_end', 'dodge_room', 'fight_sidearm_swap', 'fight_grenade_tick']:
+        for name in ['fight_tolerance', 'fight_posture_start', 'fight_posture_close_in', 'fight_posture_end', 'dodge_room', 'fight_sidearm_swap', 'fight_grenade_tick']:
             pieces.append(function(inc, name))
         pieces.append(PROFILE_MAIN)
         run('profile', '\n'.join(pieces), ['enhanced.c', 'air.c'], [])

@@ -12,6 +12,7 @@ const BMWeaponProfile *bm_weapon_profile(const char *asset, int recon, int sidea
 float bm_weapon_range(const BMConfig *config, const BMWeaponProfile *weapon);
 int bm_weapon_burst(const BMWeaponProfile *weapon, float distance);
 int bm_weapon_pause(const BMWeaponProfile *weapon, float distance);
+int bm_weapon_range_pause(const BMWeaponProfile *weapon, int scaledPause, float distance);   // AltBotMod Hunt v3: settle at range
 float bm_weapon_tolerance(const BMConfig *config, const BMWeaponProfile *weapon, float distance);
 int bm_weapon_stable(float yawError, float pitchError, float tolerance);
 

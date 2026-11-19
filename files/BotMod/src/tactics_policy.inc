@@ -54,6 +54,20 @@ int bm_weapon_pause(const BMWeaponProfile *w,float d)
     if(!w)w=&bm_weaponFamilies[BM_W_RIFLE];
     return w->pause+(d>120 && w->burst>3?3:0);
 }
+// AltBotMod Hunt v3: from 20 m out (all of it from 35 m) the pause after a burst is at least the weapon's own - long enough
+// for the recoil and the spread to settle. The levels' pause factors (elite and nightmare x0.2) left a rifle 2 frames
+// between 9-frame bursts: next to a steady stream, the gun never settled and beyond 20 m the shots went everywhere. The
+// burst rifle's own pause (3) is the gap inside its burst mode, not a settle: 9 there. Close in the level's pause stands.
+int bm_weapon_range_pause(const BMWeaponProfile *w,int scaledPause,float d)
+{
+    if(!w)w=&bm_weaponFamilies[BM_W_RIFLE];
+    if(!(d>20.0f))return scaledPause;
+    int settle=w->family==BM_W_BURST?9:bm_weapon_pause(w,d);
+    if(settle<6)settle=6;
+    float t=d>=35.0f?1.0f:(d-20.0f)/15.0f;
+    int p=(int)(scaledPause+(settle-scaledPause)*t+0.5f);
+    return p>scaledPause?p:scaledPause;
+}
 float bm_weapon_tolerance(const BMConfig *c,const BMWeaponProfile *w,float d)
 {
     if(!w)w=&bm_weaponFamilies[BM_W_RIFLE];

@@ -93,6 +93,10 @@ static unsigned g_chaseFollowAt[2];
 static void hunt_saw(char*p,const float*x){(void)p;(void)x;}
 static unsigned fight_chase_frames(int i){(void)i;return FIGHT_CHASE_FRAMES;}
 static int fight_stands_ground(int i,float d){(void)i;(void)d;return 0;}
+static int fight_holds_at_range(int i,float d){(void)i;(void)d;return 0;}   /* AltBotMod Hunt v3 (nightmare: hunt_checks.py, altbotmod_v9_checks.py) */
+static void fight_posture_close_in(int i){(void)i;}
+static signed char g_aimWeapon[2],g_aimFitFor[2];   /* AltBotMod Hunt v3: one gun here (the per-gun models: hunt_checks.py) */
+static void aim_fit_start(int i){g_aimFixSet[i]=1;g_aimFitFor[i]=g_aimWeapon[i];g_aimFixH[i]=g_aimFixHAvg;g_aimFixV[i]=g_aimFixVAvg;g_aimClimb[i]=g_aimClimbAvg;g_aimFixS[i]=g_aimFixSAvg;}
 // This fixture isolates weapon timing; complete relocation sequences are in
 // combat_flow_checks.py (the actual native movement code).
 static struct{unsigned until;}g_combatMove[2];

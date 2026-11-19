@@ -498,7 +498,7 @@ static const BMDifficulty kLevels[BM_LEVELS] = {
     // (elite's pauses: the recoil still has to settle at range), next to no breather between fights; closes to 6 m and chases
     // 20 s; never runs for cover from an enemy within 40 m (further off: below 25 hp, losing the exchange, outnumbered or
     // reloading under fire); quick irregular side steps close in; looks round every 0.3 s.
-    {0.03f, 30,  2, 0.050f, 0.45f, 0.010f, 8.0f, 450, 380, 420, 180.00f, 0.2f, 0.05f, 25,  6, 2,  6, 50, 1.0f, 3.0f, 1.5f, 25, 0.50f, 0, 15,  4,  3, 0,   0.0f,  1, 1.3f,
+    {0.03f, 30,  2, 0.050f, 0.45f, 0.010f, 8.0f, 450, 380, 420, 180.00f, 0.2f, 0.05f, 25,  6, 2,  6, 50, 1.0f, 3.0f, 1.5f, 25, 0.90f, 0, 15,  4,  3, 0,   0.0f,  1, 1.3f,
      40.0f, 20.0f, 1, 3, 0.3f},
 };
 static const char *const kLevelNames[BM_LEVELS + 1] = {"off", "easy", "normal", "hard", "veteran", "elite", "nightmare"};
@@ -561,9 +561,10 @@ int bm_dodge_style(const BMConfig *c, const BMDifficulty *P, BMDodgeStyle *o)
     if (P->strafe <= 0) { o->hopScale = mode >= 2 ? 1.0f : 3.0f; o->hopNeedsThreat = mode < 2; return 0; }
     if (P->dodge >= 3) {
         // AltBotMod Hunt (nightmare): what a good player does in a close gunfight - full-speed steps of 0.27-0.7 s, a pause of
-        // at most a quarter second, mostly back the other way but not always (bm_dodge_next: 65 % reverse), from 35 m in,
-        // shooting or not; hops between bursts at the profile's own rate
-        o->level = P->strafe; o->maxMeters = 35; o->closeMeters = 35; o->stepMin = 8; o->stepMax = 21;
+        // at most a quarter second, mostly back the other way but not always (bm_dodge_next: 65 % reverse), from 20 m in
+        // (v3: was 35 - steps spread the shots, and beyond 20 m they went everywhere), shooting or not; hops between bursts
+        // at the profile's own rate, within the same 20 m
+        o->level = P->strafe; o->maxMeters = 20; o->closeMeters = 20; o->stepMin = 8; o->stepMax = 21;
         o->restMin = 0; o->restMax = 8; o->hopScale = 1.0f; return 1;
     }
     if (mode >= 2) {

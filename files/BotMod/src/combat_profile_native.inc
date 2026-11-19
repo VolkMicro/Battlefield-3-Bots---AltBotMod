@@ -44,12 +44,19 @@ static void fight_posture_start(int i, char *soldier, float dh)
     const BMDifficulty *P = bot_profile(i);
     BotBrain *b = bot_brain(i);
     g_fightCrouch[i] = 0;
-    if (!P || P->farCrouch <= 0 || dh < P->farCrouch || g_fightAdvance[i] || b->crouched) return;
+    // (AltBotMod Hunt v3: a nightmare bot holds at range even when it closes in later, so it crouches there too)
+    if (!P || P->farCrouch <= 0 || dh < P->farCrouch || (g_fightAdvance[i] && !fight_holds_at_range(i, dh)) || b->crouched) return;
     if (*(int *)(soldier + OFF_SOLDIER_POSE) != 0) return;
     if ((rand() % 100) >= (int)(P->farCrouchChance * 100)) return;
     bot_crouch(i);
     g_fightCrouch[i] = 1;
     g_farCrouches++;
+}
+// AltBotMod Hunt v3: a nightmare bot that crouched to fire at range stands up when it closes in
+static void fight_posture_close_in(int i)
+{
+    if (g_fightCrouch[i] && !bot_brain(i)->crouched) bot_stand(i);
+    g_fightCrouch[i] = 0;
 }
 static void fight_posture_end(int i)
 {
@@ -115,7 +122,9 @@ static void combat_dodge_tick(int i)
             }
         } else if (g_dodgeDir[i]) { g_dodgeLastDir[i] = g_dodgeDir[i]; g_dodgeDir[i] = 0; }
         // a hop between bursts, close in, standing (V14: only under fire, three times rarer, unless SideSteps=2)
-        if (P->jumpFight > 0 && st.hopScale > 0 && seen && pose == 0 && d < 40 && b->step != 2 && (!st.hopNeedsThreat || threat) && H->frame >= g_jumpFightAt[i]) {
+        // (AltBotMod Hunt v3: a style with a shorter reach than 40 m hops only within it - a hop lands in the next burst)
+        float hopMax = st.maxMeters > 0 && st.maxMeters < 40 ? st.maxMeters : 40;
+        if (P->jumpFight > 0 && st.hopScale > 0 && seen && pose == 0 && d < hopMax && b->step != 2 && (!st.hopNeedsThreat || threat) && H->frame >= g_jumpFightAt[i]) {
             if (g_jumpFightAt[i]) { press_button(i, EIA_JUMP, 4); g_fightJumps++; }
             g_jumpFightAt[i] = H->frame + (unsigned)(P->jumpFight * st.hopScale * 30 * (1.0f + (rand() % 100) / 100.0f));
         }

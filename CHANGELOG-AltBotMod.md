@@ -16,6 +16,18 @@ The installer keeps your settings and adds the new ones (V31: `LockOnSeconds` an
 
 **Going back:** download an earlier release from the GitHub Releases page and install it, or copy its `files\server\BotModCore.dll` over `BotModCore.dll` in the server folder.
 
+## Hunt v3 (2026-11-19): aim at range
+
+Played with v2: "way better", but beyond 20 m "the bullets are going everywhere". Three causes, all in the fire loop:
+
+**The gun never settled between bursts.** The levels' pause factors (elite and nightmare x0.2) left a rifle 2 frames between 9-frame bursts - next to a steady stream; the recoil and the spread never came down. Now from 20 m out the pause grows to the gun's own settle time, all of it from 35 m (`bm_weapon_range_pause`): a rifle 9 frames, the burst rifle 9 (its own 3 is the gap inside its burst mode), an LMG 9 (12 beyond 120 m), a DMR 10 between shots, a bolt rifle 30. Close in each level keeps its own pause. All levels.
+
+**nightmare fired walking.** It closed in on every fight, at any range, shooting as it walked, and side-stepped at full speed out to 35 m. Now, with the target in sight, it closes in only from 25 m in; further off it holds and fires from where it stands, crouched 9 times in 10 (it stands up to close in). Out of sight it still goes after the target, and the hunt still brings it closer between fights. Side steps and fight hops only within 20 m.
+
+**One recoil fit per bot.** The climb the bots learn from their impacts was one fit per bot for the whole session, so a bot that got an M240 after an M16 aimed it with the M16's climb. Now each primary weapon has its own model (`aimw_index`, `aim_fit_start`, `aim_model_learn`): a new kit starts the bot's fit from that gun's model (once 8 impacts are in; the all-bot average before that), and its primary's impacts teach the gun's model. The 30 s `aim:` lines add `aim: by gun - U_M240 climb ... mrad/frame` for the guns fired most.
+
+Checks: `hunt_checks.py` (the settle pauses by gun and range, the 20 m side steps, the per-gun models), `altbotmod_v9_checks` (nightmare crouches at range and stands to close in), the fight fixtures know the new hooks.
+
 ## Hunt v2 (2026-11-19)
 
 The first Hunt build changed nothing a player could see: the installer kept `Difficulty=elite` from an existing `enhanced.ini`, so no nightmare rule ran, and the bots still turned and aimed as before.

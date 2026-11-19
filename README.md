@@ -20,6 +20,11 @@ Earlier releases: Release 1.1 fixed server lag and idle boats on maps with boats
 
 On top of Release 1.2 this build makes the bots come for the human players and fight like they mean it. Details and settings: [Hunt and nightmare](#hunt-and-nightmare).
 
+**v3 (aim at range):**
+- **Bursts with time to settle.** From 20 m out the pause after a burst grows to the gun's own settle time (rifle 0.3 s, DMR 0.33 s between shots, bolt 1 s). Elite and nightmare used to leave 2 frames between bursts, so beyond 20 m the shots went everywhere.
+- **nightmare holds at range.** With the target in sight it closes in only from 25 m in; further off it fires from where it stands, crouched 9 times in 10. Side steps and hops only within 20 m.
+- **Recoil learned per gun.** Each primary weapon has its own learned climb; a bot's new kit starts from that gun's model, not from the last gun it had.
+
 **v2:**
 - **Snap aim** (`SnapAim=1`). In a fight a nightmare bot aims the way a player's client does, through the input's aim fields, which this mod already uses for the M-COM key and for pilots. Before, it turned with the yaw stick at a fixed rate, and the game never turns a bot past heading 0 one way: an enemy just across north cost a turn the long way round, up to 350 degrees. Now the aim swings straight at the target at up to `SnapAimDegreesPerSecond` (720). The first fights check that the game follows it; if not, it switches itself off (log: `snapaim: OFF`) and the bots turn as before. In game: `!snapaim`, admins `!snapaim 0/1/2` (off / nightmare / every level).
 - **nightmare is switched on.** The installer moves `Difficulty=elite`, the old default, to `nightmare`; before, an existing `enhanced.ini` kept elite and none of the nightmare rules ran.

@@ -1177,6 +1177,28 @@ static int kit_item_skipped(const char *asset)
     return 0;
 }
 
+// AltBotMod Hunt v3: how each gun climbs, learned from the bots' own impacts (on_process_hit) per primary weapon - BF3
+// guns each kick their own way. V5-V35 kept one fit per bot for the whole session, so a bot that got an M240 after an M16
+// aimed the M240 with the M16's climb until enough of its own bullets had landed. Now a new kit starts the bot's fit from
+// what every bot with that gun has learned (the cross-bot average until 8 impacts are in), and the bot's impacts with its
+// primary feed that gun's model. Index + 1 in the per-bot tables (0: no kit seen yet).
+#define AIMW_MAX 48
+typedef struct AimWeaponModel { char name[40]; float H, V, C, S; unsigned impacts; } AimWeaponModel;
+static AimWeaponModel g_aimW[AIMW_MAX];
+static int g_aimWN;
+static signed char g_aimWeapon[MAX_BOTS], g_aimFitFor[MAX_BOTS];   // this life's primary / the gun the bot's fit was started for
+static int aimw_index(const char *asset)   // "Weapons/M16A4/U_M16A4" -> its model (added when new); -1: no name, or full
+{
+    if (!asset || !asset[0]) return -1;
+    const char *base = strrchr(asset, '/');
+    base = base ? base + 1 : asset;
+    for (int k = 0; k < g_aimWN; k++) if (!strncmp(g_aimW[k].name, base, sizeof g_aimW[k].name - 1)) return k;
+    if (g_aimWN >= AIMW_MAX) return -1;
+    memset(&g_aimW[g_aimWN], 0, sizeof g_aimW[g_aimWN]);
+    snprintf(g_aimW[g_aimWN].name, sizeof g_aimW[g_aimWN].name, "%s", base);
+    return g_aimWN++;
+}
+
 static int apply_loadout(char *bot, int idx)
 {
     LoadoutLib *lib = loadout_lib();
@@ -1205,6 +1227,7 @@ static int apply_loadout(char *bot, int idx)
             int bi=bot_index(bot);
             if(bi>=0)g_primaryDoctrine[bi]=bm_weapon_profile(asset_name(*(void **)(msg+0x3c)),
                 !strcmp(kit_class(L->kit),"Recon"),0);
+            if(bi>=0)g_aimWeapon[bi]=(signed char)(aimw_index(asset_name(*(void **)(msg+0x3c)))+1);   // AltBotMod Hunt v3: this life's gun
         }
     }
     memcpy(msg, L->unlockMsg, KIT_MSG_SIZE);
@@ -4399,6 +4422,15 @@ static void difficulty_status(void)
                 P->chaseSeconds, P->dodge >= 3 && g_enhanced.sideSteps > 0 ? "quick side steps from 35 m in" : "side steps by SideSteps",
                 P->detectSeconds > 0 ? P->detectSeconds : 0.5f);
 }
+// AltBotMod Hunt v3: a nightmare bot closes in from 25 m in; further off, with the target in sight, it holds and fires from
+// where it stands (crouched, mostly) - shots fired walking spread, and beyond 20 m they went everywhere. Out of sight it
+// still goes after the target (the chase), and the hunt still brings it closer between fights.
+#define PUSH_HOLD_METERS 25.0f
+static int fight_holds_at_range(int i, float meters)
+{
+    const BMDifficulty *P = bot_profile(i);
+    return P && P->push && meters > PUSH_HOLD_METERS;
+}
 // AltBotMod Hunt: the nightmare level's fight rules (0 fields in the other levels: their behaviour is unchanged)
 static int fight_stands_ground(int i, float enemyMeters)   // too close to turn its back on: no running for cover
 {
@@ -4491,6 +4523,29 @@ static float g_pitchPrevV[MAX_BOTS], g_pitchPrevL[MAX_BOTS], g_pitchRate; static
 static float g_pitchHist[MAX_BOTS][16]; static unsigned g_pitchHistAt[MAX_BOTS][16], g_aimUpdAt[MAX_BOTS];   // look pitch by frame (impacts arrive later)
 static unsigned char g_aimFixSet[MAX_BOTS];
 static float g_aimFixVAvg = 0.02f, g_aimClimbAvg = 0.001f, g_aimFixSAvg;   // what a fresh bot starts from (learned across all bots)
+// AltBotMod Hunt v3: a bot's fit starts from its gun's model (8+ impacts) or from what all bots learned, at its first fight
+// and whenever its kit brings another gun
+static void aim_fit_start(int i)
+{
+    int w = g_aimWeapon[i] - 1;
+    const AimWeaponModel *m = w >= 0 && w < g_aimWN && g_aimW[w].impacts >= 8 ? &g_aimW[w] : NULL;
+    g_aimFixSet[i] = 1; g_aimFitFor[i] = g_aimWeapon[i];
+    g_aimFixH[i] = m ? m->H : g_aimFixHAvg; g_aimFixV[i] = m ? m->V : g_aimFixVAvg;
+    g_aimClimb[i] = m ? m->C : g_aimClimbAvg; g_aimFixS[i] = m ? m->S : g_aimFixSAvg;
+}
+// ... and its impacts with that primary teach the gun's model (the first one sets it, then a running average)
+static void aim_model_learn(int i)
+{
+    int w = g_aimWeapon[i] - 1;
+    if (w < 0 || w >= g_aimWN || g_aimFitFor[i] != g_aimWeapon[i]) return;
+    AimWeaponModel *m = &g_aimW[w];
+    if (!m->impacts) { m->H = g_aimFixH[i]; m->V = g_aimFixV[i]; m->C = g_aimClimb[i]; m->S = g_aimFixS[i]; }
+    else {
+        float k = m->impacts < 20 ? 0.15f : 0.05f;
+        m->H += k * (g_aimFixH[i] - m->H); m->V += k * (g_aimFixV[i] - m->V); m->C += k * (g_aimClimb[i] - m->C); m->S += k * (g_aimFixS[i] - m->S);
+    }
+    m->impacts++;
+}
 static unsigned g_aimTorso;                          // impacts that would have hit the torso
 static int g_fightBursts[MAX_BOTS];
 static unsigned g_coverHitAt[MAX_BOTS], g_coverHits[MAX_BOTS];
@@ -4902,7 +4957,7 @@ static int fight_tick(int i, BotBrain *b, char *soldier)
         if (!solid_between(eye, aim, hit)) { visible = 1; landing = pts[tPose * 3 + h]; }
     }
     if (g_testVictim && t == g_testVictim) visible = 1;   // test: fire regardless
-    if (!g_aimFixSet[i]) { g_aimFixSet[i] = 1; g_aimFixH[i] = g_aimFixHAvg; g_aimFixV[i] = g_aimFixVAvg; g_aimClimb[i] = g_aimClimbAvg; g_aimFixS[i] = g_aimFixSAvg; }
+    if (!g_aimFixSet[i] || g_aimFitFor[i] != g_aimWeapon[i]) aim_fit_start(i);   // (AltBotMod Hunt v3: from this gun's model)
     unsigned firing = b->step == 2 && g_burstStart[i] ? H->frame - g_burstStart[i] + 2 : 0;   // +2: the pitch lags a little
     float aimValue = landing - g_aimBias[myPose] - g_aimFixH[i] - (g_aimFixV[i] + g_aimClimb[i] * (float)(firing > 90 ? 90 : firing)) * dh;
     aim[1] = tp[1] + aimValue;
@@ -4936,7 +4991,10 @@ static int fight_tick(int i, BotBrain *b, char *soldier)
     int relocating=combat_motion_tick(i,b,soldier,tp,dh);
     if(relocating)nav->targetYaw=yaw_towards(dx,dz);
     else if (visible || !g_fightAdvance[i]) {
-        if (g_fightAdvance[i] && dh > FIGHT_ADVANCE_STOP) { nav->mode = 4; nav->x = tp[0]; nav->z = tp[2]; }   // close in, facing it
+        if (g_fightAdvance[i] && dh > FIGHT_ADVANCE_STOP && !(visible && fight_holds_at_range(i, dh))) {   // close in, facing it
+            fight_posture_close_in(i);   // (AltBotMod Hunt v3: up from the far-fight crouch to close in)
+            nav->mode = 4; nav->x = tp[0]; nav->z = tp[2];
+        }
         else nav->mode = 1;
         nav->targetYaw = yaw_towards(dx, dz);
     } else if (!g_fightChase[i]) {   // advancing and it went out of sight: go to where it was last seen
@@ -4991,7 +5049,9 @@ static int fight_tick(int i, BotBrain *b, char *soldier)
         // Caspian V4: pauses long enough for the recoil to settle (V2/V3 x0.45 kept the muzzle high between bursts)
         {   const BMDifficulty *P = bot_profile(i);
             int wp = g_enhanced.weaponHandling ? bm_weapon_pause(infantry_weapon(i),dh) : bm_infantry_pause(is_recon(i), dh);
-            b->stepAt = H->frame + (P ? (unsigned)bm_profile_pause(P, wp) : bm_aggr_frames(&g_enhanced, wp, 0.85f, 0.75f)); }
+            unsigned pause = P ? (unsigned)bm_profile_pause(P, wp) : bm_aggr_frames(&g_enhanced, wp, 0.85f, 0.75f);
+            if (g_enhanced.weaponHandling) pause = (unsigned)bm_weapon_range_pause(infantry_weapon(i), (int)pause, dh);   // AltBotMod Hunt v3: let it settle at range
+            b->stepAt = H->frame + pause; }
         return 1;
     }
     if (b->step == 3) b->step = 1;
@@ -7554,6 +7614,7 @@ void __cdecl on_process_hit(char *projectile, unsigned char *hit, unsigned *args
             if (g_aimFixV[i] > 0.12f) g_aimFixV[i] = 0.12f;
             if (g_aimFixS[i] < -0.05f) g_aimFixS[i] = -0.05f;
             if (g_aimFixS[i] > 0.05f) g_aimFixS[i] = 0.05f;
+            if (learn && g_fightSlot[i] == 0) aim_model_learn(i);   // AltBotMod Hunt v3: this gun's model (not the sidearm's shots)
             g_aimFixHAvg += 0.01f * (g_aimFixH[i] - g_aimFixHAvg);
             g_aimFixVAvg += 0.01f * (g_aimFixV[i] - g_aimFixVAvg); g_aimClimbAvg += 0.01f * (g_aimClimb[i] - g_aimClimbAvg);
             g_aimFixSAvg += 0.01f * (g_aimFixS[i] - g_aimFixSAvg);
@@ -10364,6 +10425,18 @@ static void perf_report(void)
                     "average correction %.2f m + %.1f mrad down + %.2f mrad per frame of a burst, %.1f mrad sideways (%u samples so far); pitch input %.1f mrad/frame",
                     g_aimImpacts, 100.0f * g_aimTorso / g_aimImpacts, g_aimRiseSum / g_aimImpacts, g_aimSideSum / g_aimImpacts,
                     g_aimFixHAvg, g_aimFixVAvg * 1000, g_aimClimbAvg * 1000, g_aimFixSAvg * 1000, g_aimSamples[0] + g_aimSamples[1] + g_aimSamples[2], g_pitchRate * 1000);
+        if (g_aimImpacts && g_aimWN) {   // AltBotMod Hunt v3: the guns the bots fire most, and how each one climbs
+            char gl[600]; int gn = snprintf(gl, sizeof gl, "aim: by gun -"), shown = 0; unsigned char used[AIMW_MAX] = {0};
+            for (int r = 0; r < 8 && gn < (int)sizeof gl - 80; r++) {
+                int best = -1;
+                for (int k = 0; k < g_aimWN; k++) if (!used[k] && g_aimW[k].impacts && (best < 0 || g_aimW[k].impacts > g_aimW[best].impacts)) best = k;
+                if (best < 0) break;
+                used[best] = 1; shown++;
+                gn += snprintf(gl + gn, sizeof gl - gn, " %s climb %.2f mrad/frame, %.1f mrad down (%u)", g_aimW[best].name,
+                               g_aimW[best].C * 1000, g_aimW[best].V * 1000, g_aimW[best].impacts);
+            }
+            if (shown) bot_log("%s", gl);
+        }
         g_aimImpacts = g_aimOnBody = g_aimTorso = 0; g_aimSideSum = g_aimRiseSum = 0;
     }
     memset(g_perfMs, 0, sizeof g_perfMs); memset(g_perfMax, 0, sizeof g_perfMax); memset(g_subMs, 0, sizeof g_subMs); memset(g_subMax, 0, sizeof g_subMax);
@@ -12743,6 +12816,7 @@ static void enhanced_forget(int i)
     FORGET(g_hunterOf);FORGET(g_hunterSoldier);FORGET(g_hunterRole);FORGET(g_huntDriving);FORGET(g_huntPhase);FORGET(g_huntPending);   // AltBotMod Hunt
     FORGET(g_huntFails);FORGET(g_huntAngle);FORGET(g_huntGoal);FORGET(g_huntPlanAt);FORGET(g_huntScanAt);FORGET(g_huntCooldown);FORGET(g_huntRoutedAt);
     FORGET(g_snapOn);FORGET(g_snapYaw);FORGET(g_snapPitch);FORGET(g_snapStart);FORGET(g_snapHist);FORGET(g_snapPHist);FORGET(g_snapSince);   // AltBotMod Hunt v2
+    FORGET(g_aimWeapon);FORGET(g_aimFitFor);   // AltBotMod Hunt v3: the gun of each bot's life and fit
     FORGET(g_gliding);
     FORGET(g_grenadesThisLife);
     FORGET(g_gunAimH);

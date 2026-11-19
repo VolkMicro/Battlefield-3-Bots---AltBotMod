@@ -190,6 +190,8 @@ static int player_exists(char *p){return bot_index(p)>=0;}
 static const char *describe_ptr(void *p,char *d,int n){(void)p;(void)n;d[0]=0;return d;}
 static void bot_log(const char *f,...){(void)f;}
 #define __cdecl
+static unsigned char g_fightSlot[MAX_BOTS];static int g_gunLearned;   /* AltBotMod Hunt v3: impacts with the primary teach its gun's model */
+static void aim_model_learn(int i){(void)i;g_gunLearned++;}
 '''
 AIM_MAIN = r'''
 static char projectile[0x100] __attribute__((aligned(8)));static void *ref;static float D=50;
@@ -235,6 +237,9 @@ int main(void){
  for(int k=0;k<500;k++){H->frame++;g_aimValueAt[0]=H->frame;g_burstStart[0]=H->frame-20;impact(1.1f,0,4.9f);}
  assert(g_aimFixH[0]<=1.5f && g_aimFixV[0]<=0.12f && g_aimClimb[0]<=0.004f && g_aimFixS[0]>=-0.05f);
  g_fightTarget[0]=NULL;before=g_aimFixV[0];impact(0,0,1.5f);assert(g_aimFixV[0]==before);
+ /* AltBotMod Hunt v3: the primary's impacts teach its gun's model, the sidearm's do not */
+ g_fightTarget[0]=players[1];int taught=g_gunLearned;H->frame++;g_aimValueAt[0]=H->frame;impact(1.1f,0,1.2f);assert(g_gunLearned==taught+1);
+ g_fightSlot[0]=1;H->frame++;g_aimValueAt[0]=H->frame;impact(1.1f,0,1.2f);assert(g_gunLearned==taught+1);g_fightSlot[0]=0;
  puts("PASS: closed-loop aim - each bot fits where its gun points relative to its look pitch (a height offset, an angle and recoil climb per frame of a burst) from its own impacts: untrained it is metres off, trained over fights at 10-90 m every shot is within 0.4 m of the chest at every range; sideways error cancelled; shotgun pellets count once; clamped");
  return 0;
 }
