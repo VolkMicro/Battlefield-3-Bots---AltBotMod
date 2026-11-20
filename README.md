@@ -18,7 +18,7 @@ Earlier releases: Release 1.1 fixed server lag and idle boats on maps with boats
 
 ## Hunt (this build)
 
-On top of Release 1.2 this build makes the bots come for the human players and fight like they mean it. Details and settings: [Hunt and nightmare](#hunt-and-nightmare).
+On top of Release 1.2 this build makes the bots come for the human players and fight like they mean it. Details and settings: [Hunt and nightmare](#hunt-and-nightmare). What the testers asked for and what is still open: [REQUESTED-CHANGES.md](REQUESTED-CHANGES.md).
 
 **v4 (with Mr.Cat's V36-V39):**
 - **Mr.Cat's human style is the base** (`HumanStyle=1`, on by default): part of the recoil held down (0.5-0.9 by bot), 0.25 s to notice plus 0.2 s to the first shot (+0.3 s per 100 m), 70 m fights, a 160 degree view, a step sideways every 2.5 s. Also his: a bot that is hit goes after the shooter, any visible enemy interrupts a non-combat task, bots look round 5 times a second, and humans get 90 s to take a vehicle first. Details: [CHANGELOG V36-V39](CHANGELOG-AltBotMod.md).
